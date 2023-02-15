@@ -1,13 +1,18 @@
 
 
+
+
+
+const debugModeActive = true
+
 # set up environment
 using Distributions
 
 
 # set up viewport
-WIDTH=16*60
-HEIGHT=9*60
-BACKGROUND=colorant"black"
+WIDTH = 16 * 60
+HEIGHT = 9 * 60
+BACKGROUND = colorant"black"
 
 # set up infrastructure
 actorArray = 
@@ -36,10 +41,12 @@ function update( gameEngineObject::Game, tickTimeDelta::Float64, )
     global gameTime += tickTimeDelta
     global actorArray
     # diagnostics
-    print( "\n\ncurrent number of actors: $(length( actorArray ) )\n\n" )
+    print( "\n\n" * "current number of actors: $(length( actorArray ) )" * "\n\n", )
     # set all actors that already exist at the beginning of the engine tick to not be new in the current tick
     spawnedInCurrentTick!.( actorArray, false, )
-    # update all (non-new) actors
+    # let all (non-new) actors act and be acted on. (including physics calculations)
+    moveByInertia!.( actorArray, tickTimeDelta, ) # everything is subject to the laws of physics!
+    # buildCollisionIndex() # build a data structure to perform collision checks fast
     currentActingActorIndex = 1
     while currentActingActorIndex <= length(actorArray)
         if !( actorArray[ currentActingActorIndex, ] === nothing ) # dont do anything if the actor has been removed
@@ -49,10 +56,15 @@ function update( gameEngineObject::Game, tickTimeDelta::Float64, )
                         tickTimeDelta, # gametime passed since last engine tick in seconds
                         gameEngineObject, 
                         ) 
+                collide!.( # check what collides and act on it
+                    [ actorArray[ currentActingActorIndex, ], ], # note: the extra brackets are to ensure the broadcast works correctly.
+                    checkCollision( actorArray[ currentActingActorIndex, ], checkPreviousObjects = false, ), # only check actors one-sided. that is: for each object only check collisio nagainst those later in the actor list.
+                )
                 end
             end
             currentActingActorIndex += 1
         end
+    executePhysicsCorrectionMove!.( actorArray, tickTimeDelta, ) # apply a correction to ensure that objects dont get stuck in each other. (this is done after all the collision check because it invalidates the collisionIndex)
     # remove entries containing nothing (must be called near the end of the update function, to leave a clean actorArray for other engine parts such as drawToCanvas() and on_key_down())
     actorArray = 
         actorArray[ .!( actorArray .=== nothing ), ]
@@ -155,11 +167,14 @@ function -( a::Location ) # invert
         )
     end
 import Base.*
-function *( a::Location, b::Float64, ) # scale a
+function *( a::Location, b::Real, ) # scale a
     typeof(a)( 
         x( a, ) * b, 
         y( a, ) * b, 
         )
+    end
+function dot( l1::RelativeLocation, l2::RelativeLocation, ) # dot-product of two vectors
+    x( l1, ) * x( l2, ) + y( l1, ) * y( l2, )
     end
 function *( a::Float64, b::Location, ) # forwarding method that just switches around the arguments
     *( b, a, )
@@ -345,6 +360,7 @@ struct VisualRectangle<:Visual
 function Shape( object::VisualRectangle, )
     object.shape
     end
+import Colors.color
 function color( visual::VisualRectangle, )
     visual.color
     end
@@ -417,6 +433,18 @@ function currentActorArrayIndex!( # engine internal function, used to keep track
         )
     object.currentActorArrayIndex = arrayIndex
     end
+function physicsCorrectionMove( object::GameObject, )
+    object.physicsCorrectionMove
+    end
+function setPhysicsCorrectionMove!( object::GameObject, move::RelativeLocation, )
+    # print("setting PhysicsCorrectionMove to $(move) " * "\n", )
+    object.physicsCorrectionMove = move
+    end
+function executePhysicsCorrectionMove!( object::GameObject, tickTimeDelta::Float64, )
+    # print("executing PhysicsCorrectionMove" * "\n", )
+    absoluteLocation!( object, physicsCorrectionMove( object, ), )
+    setPhysicsCorrectionMove!( object, RelativeLocation( 0, 0, ), )
+    end
 function spawn( 
         object::GameObject, # an instance of some type acting as a template to spawn a copy of in the gameEngineObject world
         )
@@ -448,74 +476,12 @@ function remove( object::GameObject, )
 function initialise!( object::GameObject, ) # is called upon spawning
     end
 function update!( object::GameObject, timeDelta::Float64, gameEngineObject::Game, ) # is called at every engine tick
-    doPhysics!(
-        # it might be better to move that outside of update!().
-        #   reasons for outside:
-        #       otherwise it needs to be in each method of update!()
-        #           when outside then update!() only represents that the objects "does", rather then including what is done to it (by the laws of physics).
-        #   reasons for inside:
-        #       allows removing it for objects that dont need physics (good for performance) or which have alternative physics.
-        #           but this might not be a big deal, as one can just have empty doPhysics!() methods for objects that dont need physics. then the only thing that costs performance is calling an empty function. (which doesnt cost much)
-        #       makes it clear what happens if e.g. an objects does someting on collision and also does something on the update tick by itself.
-        #           e.g. if the object gets removed through a collision calling update!() on it afterwards might otherwise error, requiring extra code to check for such changes befire calling it.
-        #               there might be the possibility that the object can have arbitraty cnflicting state changes, such that a general solution isnt possible without handcrafting the update and doPhysics!() or collide() methods together.
-        #                   which in turn would suggest having it all together in update!().
-        #       there is the theoretical argument that there is no difference between the laws of physics doing something to an object and the object doing a thing. (after all the object is run by the laws of physics and nothing else)
-        #       i might even remove the doPhysics! method altogether and include the collision checks and corresponding actions in the move method instead. (haven thought that fully through yet)
-        object, 
-        timeDelta, 
-        )
     end
-function doPhysics!( object::GameObject, timeDelta::Float64, ) # run standard physics calculations for an object (called each engine tick for all objects that use physics)
-    # print("doPhysics!-printStatement1" * "\n")
-    moveByInertiaAndCollide!( object, timeDelta, )
-    # ... here i could add functions such as applyDrag(). whatever the standard physics are, in a very abstract form.
-    end
-function moveByInertiaAndCollide!( object::GameObject, timeDelta::Float64, ) # move the object and check for collisions resulting from this move.
-    #   note that there can be only 1 collision initiated by a given object per engine tick, because this is necessary if the engine is to remain simple:
-    #       by calculating only one collision per tick (and putting the object back to its initial location in case of a collision) it is guaranteed that there are no collision chain reactions between multiple objects within a single engine tick.
-    #           if one would calculate several collisions one collision might alter the path of the object such that further collisions would occur
-    #               calculating multiple collisions would thus require:
-    #                   calculating several movements in one tick
-    #                   moving the colliding objects out of the way in between movements (that is: updating their movement and position)
-    #                       this in turn could cause further collisions between them
-    #                       there could also be a situation where 1 ball is shot in between 2 others and then repeatedly bounceds back and forth between them, all in one tick.
-    #                           so one cannot just simply deactivate collision with objects that have already been collided with (otherwise the objects could end up inside each other at the end of the tick)
-    #       note that this could theoretically lead to strange situations where several small objects collide with one larger one in a single tick, but:
-    #           this situation is basically outside its design specifications of the engine anyways, since the engine is designed such that objects move one at a time, which basically requires that the engine ticks are small enough for this not to happen for other reasons anyways.
-    #               (the reason why this cant happen with this engine is because when objects move in parallel to each other at a speed such that the movement between 2 tiks is larger than the distance between the objects then the engine detects a collision betweeen them. this means that basically one cannot have a cloud of particle dense enough to create a large number of collisions in one tick.
-    #   todo:
-    #       i might have to redesign the physics engine again, as i figured out that objects can collide twice even though they shouldnt if one still moves towards the other after the first collision and is the next in line to move.
-    #           this can happen in two situations:
-    #               one object is much heavier than the other
-    #               the objects have similar absolute velocity vectors (that is speed and direction)
-    # print( "moveByInertiaAndCollide!-printStatement1" * "\n", )
+function moveByInertia!( object::GameObject, timeDelta::Float64, ) # move the object based the laws of physics.
     absoluteLocation!( 
         object, 
         RelativeLocation( x( velocity( object, ), ) * timeDelta, y( velocity( object, ), ) * timeDelta, )
-        )    
-    # print("moveByInertiaAndCollide!-printStatement2" * "\n")
-    # print( "$(typeof(object))" * "\n", )
-    collidingObject=
-        checkCollision( # note: this function may only return the first found collider for performance optimisation. The physics engine may not be able to use more than one currently (at least the current design cant)
-            object, 
-            )
-    # print( "returned colliding object is $collidingObject." * "\n", )
-    # print("moveByInertiaAndCollide!-printStatement3" * "\n")
-    if( collidingObject !== nothing )
-        # print("moveByInertiaAndCollide!-printStatement4" * "\n")
-        absoluteLocation!( # move object back to its previous (non-colliding) position 
-            object, 
-            RelativeLocation( x( velocity( object, ), ) * -timeDelta, y( velocity( object, ), ) * -timeDelta, )
-            )   
-        # print("moveByInertiaAndCollide!-printStatement5" * "\n")
-        collide!( # allow objects to act on the collision (e.g. bounce off of each other, stick to each other, damage each other, explode, ...)
-            object, 
-            collidingObject, # only do this for 1 (arbitratily chosen, that is just take the first in the list) colliding object, as an object is only allowed to cause 1 collision per engine tick (otherwise there would have to be code to decide in what order collisions happen, and then one would also have to compute whether e.g. the first collision would prevent the next one from happening and how it would change the strength of impact and so forth)
-            )
-        # print("moveByInertiaAndCollide!-printStatement6" * "\n")
-        end
-    # print("moveByInertiaAndCollide!-printStatement7" * "\n")
+        )
     end
 function LocalizedShape( object::GameObject, )
     LocalizedShape( 
@@ -523,64 +489,50 @@ function LocalizedShape( object::GameObject, )
         AbsoluteLocation( object, ), 
         )
     end
-function checkCollision( object1::GameObject, ) # returns a reference to all objects colliding with the one being checked
-    # note: technically i might have a design decision that i only do one collision per tick, so it might be possible to change this function to only return one collision.
-    #   i didnt do that because i suspected that returning all collisions doesnt reduce performance much, and might be useful for dev purposes.
-    # this function can be heavily performance optimized by dividing space into a hierarchy of blocks (e.g. by binary space partition) and testing for collision along the hierarchy.
-
-    # print("checkingCollision" * "\n") # dev
-    # print("type of colliding object is $(typeof( object1, ))." * "\n")
-    # print("type of mechanical bounding box of colliding object is $(typeof(mechanicalShape( object1, )))." * "\n")
-
+function checkCollision( # returns a reference to all objects colliding with the one being checked
+        object1::GameObject; 
+        checkPreviousObjects = true::Bool,  # whether to check actors before this one in the actorArray (because in some use cases that has already been checked from their side)
+        )
+    colliders = GameObject[] # create an empty array to collect references to colliding objects in
     if ( typeof( mechanicalShape( object1, ), ) != Nothing )
-
-        # # code to return all coliders
-        # colliders=
-        #     GameObject[] # create an empty array to collect references to colliding objects in
-        # for currentObject2 in actorArray
-        #     if( checkBoundingBoxIntersection( object1, currentObject2, ) )
-        #         push!( colliders, currentObject2, )
-        #         end
-        #     end
-        # return colliders
-
-        # code to return only the first found collider
         for currentObject2 in actorArray
-            if !( currentObject2 === nothing ) # dont do anything if thte object has been removed (e.g. as a result of a collision)
+            if !( currentObject2 === nothing ) # dont do anything if the object has been removed (e.g. as a result of a collision)
                 if ( mechanicalShape( currentObject2, ) !== nothing ) # dont do collision checking if the object has no collision.
                     if ( !( object1 === currentObject2 ) ) # prevent objects form colliding with themselfes
-                        # print( "\n" * "checking collision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
-                        # print("type of collided object is $(typeof( currentObject2, ))." * "\n")
-                        # print("type of mechanical bounding box of collided object is $(typeof(mechanicalShape( currentObject2, )))." * "\n")
-                        if checkCollision( object1, currentObject2, )
-                            # print( 
-                            #     "colision detected between:" * "\n" * 
-                            #     "$(typeof(object1))" * "\n" * 
-                            #     "$(typeof(currentObject2))" * "\n", 
-                            #     )
-                            # print( "colision detected!, returning object." * "\n", )
-                            return currentObject2
-                            # todo: how to prevent that an object collides with itself?
-                        else
-                            # print( "no collision detected!" * "\n", )
+                        if (checkPreviousObjects || (currentActorArrayIndex( currentObject2, ) > currentActorArrayIndex( object1, ))) # if desired, dont chekc collision with objects earlier in the actorArray (because that would have already been checked from their side)
+                            if checkCollision( object1, currentObject2, )
+                                push!( colliders, currentObject2, )
+                                # print( 
+                                #     "colision detected between:" * "\n" * 
+                                #     "$(typeof(object1))" * "\n" * 
+                                #     "$(typeof(currentObject2))" * "\n", 
+                                #     )
+                                end
                             end
                         end
                     end
                 end
             end
         end
+    return colliders
     end
 function checkCollision( localizedShape::LocalizedShape, ) # returns a reference to all objects colliding with the localizedShape being checked
-    # note: for comments and print statements see checkCollision( object1::GameObject, )
+    colliders = GameObject[] # create an empty array to collect references to colliding objects in
     for currentObject in actorArray
         if !( currentObject === nothing ) # dont do anything if the object has been removed (e.g. as a result of a collision)
             if ( mechanicalShape( currentObject, ) !== nothing ) # dont do collision checking if the object has no collision.
                 if checkCollision( localizedShape, currentObject, )
-                    return currentObject
+                    push!( colliders, currentObject, )
+                    # print( 
+                    #     "colision detected between:" * "\n" * 
+                    #     "$(typeof(localizedShape))" * "\n" * 
+                    #     "$(typeof(currentObject2))" * "\n", 
+                    #     )
                     end
                 end
             end
         end
+    return colliders
     end
 function checkCollision( # checks whether two objects intersect 
         object1::GameObject, 
@@ -591,7 +543,7 @@ function checkCollision( # checks whether two objects intersect
         LocalizedShape( object2, ), 
         )
     end
-function checkCollision( # checks whether two objects intersect 
+function checkCollision(
         object::GameObject, 
         localizedShape::LocalizedShape, 
         )
@@ -600,7 +552,7 @@ function checkCollision( # checks whether two objects intersect
         localizedShape, 
         )
     end
-function checkCollision( # checks whether two objects intersect 
+function checkCollision(
         localizedShape::LocalizedShape, 
         object::GameObject, 
         )
@@ -661,41 +613,125 @@ function checkCollision(
         localizedShape1::LocalizedShape{ ShapeRectangle, }, 
         localizedShape2::LocalizedShape{ ShapeRectangle, }, 
         )
-    # print( "checking bounding box intersection. Bounding boxes are: $(LocalizedShape(object1)) and $(LocalizedShape(object2))" * "\n", )
     checkBoundingBoxIntersection1d( localizedShape1, localizedShape2, 1, ) & checkBoundingBoxIntersection1d( localizedShape1, localizedShape2, 2, )
     end
 function checkBoundingBoxIntersection1d( # component of checkBoundingBoxIntersection()
-            localizedShape1::LocalizedShape{ ShapeRectangle, }, 
-            localizedShape2::LocalizedShape{ ShapeRectangle, }, 
-            dimension::Int, # which dimension to check (can be either 1 or 2)
-            )
-        checkBoundingBoxIntersection1dOneSided( localizedShape1, localizedShape2, dimension, ) & checkBoundingBoxIntersection1dOneSided( localizedShape2, localizedShape1, dimension, )
+        localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+        localizedShape2::LocalizedShape{ ShapeRectangle, }, 
+        dimension::Int, # which dimension to check (can be either 1 or 2)
+        )
+    checkBoundingBoxIntersection1dOneSided( localizedShape1, localizedShape2, dimension, ) & checkBoundingBoxIntersection1dOneSided( localizedShape2, localizedShape1, dimension, )
     end
 function checkBoundingBoxIntersection1dOneSided( # component of checkBoundingBoxIntersection1d()
-            localizedShape1::LocalizedShape{ ShapeRectangle, }, 
-            localizedShape2::LocalizedShape{ ShapeRectangle, }, 
-            dimension::Int, 
-            )
-        # print( "checking dimension $dimension." * "\n", )
-        if( dimension == 1 )
-            # print( 
-            #     "LocalizedShape( object1, ).x = $(LocalizedShape( object1, ).x)" * "\n" *
-            #     "<= ( LocalizedShape( object2, ).x = $( LocalizedShape( object2, ).x)" * "\n" *
-            #     " + .5absoluteMechanicalBoundingBox( object2, ).w = $( LocalizedShape( object2, ).w). )" * "\n", 
-            #     )
-            # LocalizedShape( object1, ).x < ( LocalizedShape( object2, ).x + LocalizedShape( object2, ).w ) # reference: original working but slow code
-            # ( AbsoluteLocation( object1, ).x + mechanicalShape( object1, ).x ) < ( ( AbsoluteLocation( object2, ).x + mechanicalShape( object2, ).x ) + mechanicalShape( object2, ).w ) # working fast code from before refactoring
-            ( x( AbsoluteLocation( localizedShape1, ), ) + relativeLeftBound( Shape( localizedShape1, ), ) ) < ( x( AbsoluteLocation( localizedShape2, ), ) + relativeRightBound( Shape( localizedShape2, ), ) ) # working fast code
-        else
-            # print( 
-            #     "LocalizedShape( object1, ).y = $(LocalizedShape( object1, ).y)" * "\n" *
-            #     "<= ( LocalizedShape( object2, ).y = $( LocalizedShape( object2, ).y)" * "\n" *
-            #     " + .5absoluteMechanicalBoundingBox( object2, ).h = $( LocalizedShape( object2, ).h). )" * "\n", 
-            #     )
-            # LocalizedShape( object1, ).y < ( LocalizedShape( object2, ).y + LocalizedShape( object2, ).h ) # reference: original working but slow code
-            # ( AbsoluteLocation( object1, ).y + mechanicalShape( object1, ).y ) < ( ( AbsoluteLocation( object2, ).y + mechanicalShape( object2, ).y ) + mechanicalShape( object2, ).h ) # working fast code fro mbefore refactoring
-            ( y( AbsoluteLocation( localizedShape1, ), ) + relativeUpperBound( Shape( localizedShape1, ), ) ) < ( y( AbsoluteLocation( localizedShape2, ), ) + relativeLowerBound( Shape( localizedShape2, ), ) ) # working fast code
+        localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+        localizedShape2::LocalizedShape{ ShapeRectangle, }, 
+        dimension::Int, 
+        )
+    if dimension == 1
+        ( x( AbsoluteLocation( localizedShape1, ), ) + relativeLeftBound( Shape( localizedShape1, ), ) ) < ( x( AbsoluteLocation( localizedShape2, ), ) + relativeRightBound( Shape( localizedShape2, ), ) )
+    else
+        ( y( AbsoluteLocation( localizedShape1, ), ) + relativeUpperBound( Shape( localizedShape1, ), ) ) < ( y( AbsoluteLocation( localizedShape2, ), ) + relativeLowerBound( Shape( localizedShape2, ), ) )
+        end
+    end
+function intersectionTime( # computes the time that objects have moved into each other (computed from their relative velocity and how much they intersect)
+        object1::GameObject, 
+        object2::GameObject, 
+        relativeVelocity::RelativeLocation, 
+        )
+    intersectionTime(
+        LocalizedShape( object1, ), 
+        LocalizedShape( object2, ), 
+        relativeVelocity, 
+        )
+    end
+# function intersectionTime( # computes the time that objects have moved into ieach other (computed from their relative velocity and how much they intersect)
+#         s1::LocalizedShape{ ShapeCircle, }, 
+#         s2::LocalizedShape{ ShapeCircle, }, 
+#         relativeVelocity::RelativeLocation, 
+#         )
+#     r1 + r2 = 
+#         dist( s1, s2 + relativeVelocity * -intersectionTime, )
+#     r1 + r2 = 
+#         sqrt(
+#             (x( s1, ) - x( s2, ) + x( relativeVelocity, ) * -intersectionTime)^2 +
+#             (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2
+#             )
+#     (r1 + r2)^2 = 
+#             (x( s1, ) - x( s2, ) + x( relativeVelocity, ) * -intersectionTime)^2 +
+#             (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2
+#     (r1 + r2)^2 -
+#     (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2 = 
+#             (x( s1, ) - x( s2, ) + x( relativeVelocity, ) * -intersectionTime)^2
+#     sqrt(
+#         (r1 + r2)^2 -
+#         (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2
+#         ) = 
+#             x( s1, ) - x( s2, ) + x( relativeVelocity, ) * -intersectionTime
+#     sqrt(
+#         (r1 + r2)^2 -
+#         (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2
+#         ) /
+#         (x( s1, ) - x( s2, ) + x( relativeVelocity, )) = 
+#             -intersectionTime
+#     intersectionTime=
+#         sqrt(
+#             (r1 + r2)^2 -
+#             (y( s1, ) - y( s2, ) + y( relativeVelocity, ) * -intersectionTime)^2
+#             ) /
+#             (x( s1, ) - x( s2, ) + x( relativeVelocity, ))            
+#     end
+function intersectionTime( # computes the time that objects have moved into each other (computed from their relative velocity and how much they intersect)
+        s1::LocalizedShape{ ShapeRectangle, }, 
+        s2::LocalizedShape{ ShapeRectangle, }, 
+        relativeVelocity::RelativeLocation, 
+        )
+    if debugModeActive 
+        if ((x( relativeVelocity, ) == 0) & (y( relativeVelocity, ) == 0))
+            error( "trying to compute intersectionTime from a non-moving object" * "\n", )
             end
+        end
+    # derivation
+    # x( s1, ) - x( s2, ) + x( relativeVelocity, ) * intersectionTime =
+    #     .5sizeX( s1, ) + .5sizeX( s2, )
+    # x( relativeVelocity, ) * intersectionTime =
+    #     .5sizeX( s1, ) + .5sizeX( s2, ) - x( s1, ) + x( s2, )
+    # intersectionTime =
+    #     (.5sizeX( s1, ) + .5sizeX( s2, ) - x( s1, ) + x( s2, )) / x( relativeVelocity, )
+    # print("$(s1)\n")
+    # print("$(s2)\n")
+    # print("$(relativeVelocity)\n")
+    intersectionTimeX1 =
+        ((.5sizeX( Shape( s1, ), ) + .5sizeX( Shape( s2, ), ) + x( AbsoluteLocation( s1, ) ) - x( AbsoluteLocation( s2, ), )) / x( relativeVelocity, ))
+    intersectionTimeX2 =
+        ((.5sizeX( Shape( s1, ), ) + .5sizeX( Shape( s2, ), ) + x( AbsoluteLocation( s2, ) ) - x( AbsoluteLocation( s1, ), )) / -x( relativeVelocity, ))
+    intersectionTimeY1 =
+        ((.5sizeY( Shape( s1, ), ) + .5sizeY( Shape( s2, ), ) + y( AbsoluteLocation( s1, ), ) - y( AbsoluteLocation( s2, ), )) / y( relativeVelocity, ))
+    intersectionTimeY2 =
+        ((.5sizeY( Shape( s1, ), ) + .5sizeY( Shape( s2, ), ) + y( AbsoluteLocation( s2, ), ) - y( AbsoluteLocation( s1, ), )) / -y( relativeVelocity, ))
+    intersectionTimeResult = 
+        min( 
+            max( intersectionTimeX1, intersectionTimeX2, ), # note: im pretty sure it's possible to makae a single formula for this so i dont need the max()
+            max( intersectionTimeY1, intersectionTimeY2, ), # note: im pretty sure it's possible to makae a single formula for this so i dont need the max() 
+            )
+    # print("intersectionTime: $(intersectionTimeResult)" * "\n")
+    # print( "intersectionDistance: $(intersectionTimeResult * relativeVelocity)" * "\n", )
+    if debugModeActive
+        if intersectionTimeResult === Inf
+            print(
+                "s1: $s1" * "\n" *
+                "s2: $s2" * "\n" *
+                "relativeVelocity: $relativeVelocity" * "\n",
+                )
+            error( "infinite intersection time" * "\n", )
+            end
+        if intersectionTimeResult < 0
+            error( "negative intersection time" * "\n", )
+            end
+        if intersectionTimeResult === NaN
+            error( "NaN intersection time" * "\n", )
+            end
+        end
+    return intersectionTimeResult
     end
 function collide!( object1::GameObject, object2::GameObject, )
     # this function works as follows:
@@ -714,6 +750,7 @@ function collide!( object1::GameObject, object2::GameObject, )
     #           to compute the collision vector the positions from before the collision need to be used because if the objects are intersecting the objects might already have "passed through" each other by more than 50%, giving a wrong sign to the collision vector.
     # about physics:
     #   i need to implement:
+    #       think abou in what order should collide, and whether the order is unintentionally hardcoded
     #       mass
     #           this hopefully allows removing the special collision code for static box (by setting its mass to infinity)
     #       i need to check whether the code respects the physical laws of:
@@ -727,26 +764,47 @@ function collide!( object1::GameObject, object2::GameObject, )
     #       rotation
     #       calculating the touching point and applying forces there rather then on the mass-center of the object
     # ... update velocities according to the collision
-    print( "collide!( object1::GameObject, object2::GameObject, )" * "\n" * "\n", )
+    # print( "\n" * "collide!( object1::GameObject, object2::GameObject, )" * "\n" * "\n", )
     # commonVelocity = velocity( object1, ) + velocity( object2, )
     differenceVelocity = velocity( object1, ) - velocity( object2, )
+    differencePosition = AbsoluteLocation( object1, ) - AbsoluteLocation( object2, )
+    object1MassProportion = mass( object1, ) / (mass( object1, ) + mass( object2, ))
+    object2MassProportion = mass( object2, ) / (mass( object1, ) + mass( object2, ))
+    # print("object1MassProportion $(object1MassProportion)" * "\n", )
+    # print("object2MassProportion $(object2MassProportion)" * "\n", )
     # print("velocity1 = $(velocity(object1))\n")
     # print("velocity2 = $(velocity(object2))\n")
     # print("commonVelocity = $commonVelocity\n")
     # print("differenceVelocity = $differenceVelocity\n")
-    collide!( object1, )
-    collide!( object2, )
-    if ( object1 !== nothing )
-        velocity!( 
-            object1, 
-            -.7differenceVelocity
-            )
-        end
-    if ( object2 !== nothing )
-        velocity!( 
-            object2, 
-            .7differenceVelocity
-            )
+    if dot( differenceVelocity, differencePosition, ) < 0 # only collide if the two objects are moving towards each other.
+        if ((x( differenceVelocity, )^2 + y( differenceVelocity, )^2) > 1e-100) # to guard against numerical errors that sometimes drop velocity to zero for very slowly moving objects, resulting in an infinite integration time.
+            cachedIntersectionTime = intersectionTime( object1, object2, differenceVelocity, )
+            setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * (1 - object1MassProportion) * cachedIntersectionTime, )
+            setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * (1 - object2MassProportion) * cachedIntersectionTime, )
+            end
+        # setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * 2 * (1 - object1MassProportion), )
+        # setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * 2 * (1 - object2MassProportion), )
+        collide!( object1, )
+        collide!( object2, )
+        bounciness = .5
+        if object1 !== nothing
+            velocity!( 
+                object1, 
+                -differenceVelocity * (.5 + .5bounciness)  * 2 * (1 - object1MassProportion)
+                )
+            end
+        if object2 !== nothing
+            velocity!( 
+                object2, 
+                differenceVelocity * (.5 + .5bounciness) * 2 * (1 - object2MassProportion)
+                )
+            end
+    else
+        if ((x( differenceVelocity, )^2 + y( differenceVelocity, )^2) > 1e-30) # to guard against numerical errors that sometimes drop velocity to zero for very slowly moving objects, resulting in an infinite integration time.
+            cachedIntersectionTime = -intersectionTime( object1, object2, differenceVelocity * -1, ) * 2
+            setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * (1 - object1MassProportion) * cachedIntersectionTime, )
+            setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * (1 - object2MassProportion) * cachedIntersectionTime, )
+            end
         end
     end
 function collide!( object::GameObject, ) # this function allows objects to do something internally on collision. (see other collide method for more info)
@@ -792,6 +850,9 @@ function velocity!( object::GameObject, impulse::RelativeLocation, ) # change ve
         )
     return object
     end
+function mass( object::GameObject, )
+    error("No method mass( ::$(typeof(object)), ) found. Subtypes of GameObject need to have such a method.")
+    end
 
 mutable struct StaticObject<:GameObject
     shape::Shape
@@ -799,12 +860,13 @@ mutable struct StaticObject<:GameObject
     location::Union{ AbsoluteLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
+    physicsCorrectionMove::RelativeLocation
     function StaticObject( 
             shape::Shape, 
             color::Colorant, 
             location::Union{ AbsoluteLocation, Nothing, } = nothing, 
             )
-        new( shape, color, location, nothing, nothing, )
+        new( shape, color, location, nothing, nothing, RelativeLocation(0, 0, ), )
         end
     end
 function mechanicalShape( object::StaticObject, )
@@ -827,24 +889,58 @@ function velocity( object::StaticObject, )
     RelativeLocation( 0, 0, )
     end    
 function velocity!( object::StaticObject, newVelocity::AbsoluteLocation, )
-    error("Can't assign velocity to a StaticObject.")
-    # if newVelocity != RelativeLocation( 0, 0, )
-    #     error("Can't give a non-zero velocity to a StaticObject.")
+    # if newVelocity != AbsoluteLocation( 0, 0, )
+    #     error( "trying to set non-zero velocity on static object: $(newVelocity)" * "\n" )
     #     end
+    end
+function mass( object::StaticObject, )
+    Inf
     end
 function initialiseVelocity!( object::StaticObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
     end
 function collide!( object1::StaticObject, object2::GameObject, )
-        print( "collide!( object1::StaticObject, object2::GameObject, )" * "\n" * "\n", )
-        differenceVelocity = velocity( object1, ) - velocity( object2, )
-        # print("velocity1 = $(velocity(object1))\n")
-        # print("velocity2 = $(velocity(object2))\n")
-        # print("commonVelocity = $commonVelocity\n")
-        # print("differenceVelocity = $differenceVelocity\n")
-        velocity!( 
-            object2, 
-            1.4differenceVelocity
-            )
+    # print( "\n" * "collide!( object1::StaticObject, object2::GameObject, )" * "\n" * "\n", )
+    # commonVelocity = velocity( object1, ) + velocity( object2, )
+    differenceVelocity = velocity( object1, ) - velocity( object2, )
+    differencePosition = AbsoluteLocation( object1, ) - AbsoluteLocation( object2, )
+    object1MassProportion = 1
+    object2MassProportion = 0
+    # print("object1MassProportion $(object1MassProportion)" * "\n", )
+    # print("object2MassProportion $(object2MassProportion)" * "\n", )
+    # print("velocity1 = $(velocity(object1))\n")
+    # print("velocity2 = $(velocity(object2))\n")
+    # print("commonVelocity = $commonVelocity\n")
+    # print("differenceVelocity = $differenceVelocity\n")
+    if dot( differenceVelocity, differencePosition, ) < 0 # only collide if the two objects are moving towards each other.
+        if ((x( differenceVelocity, )^2 + y( differenceVelocity, )^2) > 1e-100) # to guard against numerical errors that sometimes drop velocity to zero for very slowly moving objects, resulting in an infinite integration time.
+            cachedIntersectionTime = intersectionTime( object1, object2, differenceVelocity, )
+            setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * (1 - object1MassProportion) * cachedIntersectionTime, )
+            setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * (1 - object2MassProportion) * cachedIntersectionTime, )
+            end
+        # setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * 2 * (1 - object1MassProportion), )
+        # setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * 2 * (1 - object2MassProportion), )
+        collide!( object1, )
+        collide!( object2, )
+        bounciness = .5
+        if object1 !== nothing
+            velocity!( 
+                object1, 
+                -differenceVelocity * (.5 + .5bounciness)  * 2 * (1 - object1MassProportion)
+                )
+            end
+        if object2 !== nothing
+            velocity!( 
+                object2, 
+                differenceVelocity * (.5 + .5bounciness)  * 2 * (1 - object2MassProportion)
+                )
+            end
+    else
+        if ((x( differenceVelocity, )^2 + y( differenceVelocity, )^2) > 1e-30) # to guard against numerical errors that sometimes drop velocity to zero for very slowly moving objects, resulting in an infinite integration time.
+            cachedIntersectionTime = -intersectionTime( object1, object2, differenceVelocity * -1, ) * 2
+            setPhysicsCorrectionMove!( object1, physicsCorrectionMove( object1, ) - differenceVelocity * (1 - object1MassProportion) * cachedIntersectionTime, )
+            setPhysicsCorrectionMove!( object2, physicsCorrectionMove( object2, ) + differenceVelocity * (1 - object2MassProportion) * cachedIntersectionTime, )
+            end
+        end
     end
 function collide!( object1::GameObject, object2::StaticObject, ) # just a wrapper to switch the arguments around
     collide!( object2, object1, )
@@ -862,6 +958,7 @@ mutable struct ParticleSpawner<:GameObject
     timeOfNextParticleSpawn::Union{ Float64, Nothing, } # absolute gameTime when the next particle is spawned
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
+    physicsCorrectionMove::RelativeLocation
     function ParticleSpawner(
             visual::Visual, 
             particleTemplate::GameObject, 
@@ -878,6 +975,7 @@ mutable struct ParticleSpawner<:GameObject
             nothing,
             nothing, 
             nothing,  
+            RelativeLocation(0, 0, ), 
             )
         end
     end
@@ -886,6 +984,9 @@ function mechanicalShape( object::ParticleSpawner, )
     end
 function Visual( object::ParticleSpawner, )
     object.visual
+    end
+function mass( object::ParticleSpawner, )
+    error( "Trying to access mass on a $(typeof( object, )), which doesn't have a physical representation.", )
     end
 function AbsoluteLocation( object::ParticleSpawner, )
     object.location
@@ -906,10 +1007,6 @@ function initialise!( spawner::ParticleSpawner, )
     spawner.timeOfNextParticleSpawn = gameTime + ( 1 / spawner.spawningRate )
     end 
 function update!( spawner::ParticleSpawner, tickTimeDelta::Float64, gameEngineObject::Game, )
-    doPhysics!(
-        spawner, 
-        tickTimeDelta, 
-        )
     updateSpawningLoop( spawner::ParticleSpawner, )
     end
 function updateSpawningLoop( spawner::ParticleSpawner, )
@@ -920,14 +1017,14 @@ function updateSpawningLoop( spawner::ParticleSpawner, )
         end
     end
 function spawnParticle( spawner::ParticleSpawner, )
-    if ( # check if there is enough space to spaw a particle
-        nothing === checkCollision(
-            LocalizedShape( 
-                mechanicalShape( spawner.particleTemplate, ),
-                AbsoluteLocation( spawner, ), 
-                ),
+    if isempty( # check if there is enough space to spaw a particle
+            checkCollision(
+                LocalizedShape( 
+                    mechanicalShape( spawner.particleTemplate, ),
+                    AbsoluteLocation( spawner, ), 
+                    ),
+                ), 
             )
-        )
         spawn( 
             spawner.particleTemplate, 
             AbsoluteLocation( spawner, ),
@@ -938,19 +1035,22 @@ function spawnParticle( spawner::ParticleSpawner, )
 mutable struct Mover<:GameObject
     shape::Shape
     color::Colorant
+    mass::Float64
     velocityStandardDeviation::Float64
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
+    physicsCorrectionMove::RelativeLocation
     function Mover( 
             shape::Shape, 
             color::Colorant, 
+            mass::Real, 
             velocityStandardDeviation::Real, 
             location::Union{ AbsoluteLocation, Nothing, } = nothing, 
             velocity::Union{ RelativeLocation, Nothing, } = nothing, 
             )
-        new( shape, color, velocityStandardDeviation, location, velocity, nothing, nothing, )
+        new( shape, color, mass, velocityStandardDeviation, location, velocity, nothing, nothing, RelativeLocation(0, 0, ), )
         end
     end
 function mechanicalShape( object::Mover, )
@@ -962,27 +1062,9 @@ function color( object::Mover, )
 function Visual( object::Mover, )
     Visual( mechanicalShape( object, ), color( object, ), )
     end
-# function collide!( object1::Mover, object2::GameObject)
-#     print( "collide!( object1::Mover, object2::GameObject)" * "\n" * "\n", )
-#     remove( object1, )
-#     end
-# function collide!( object1::GameObject, object2::Mover) # forwarding method that just swaps the arguments around.
-#     collide!( object2, object1, )
-#     end
-# function collide!( object1::Mover, object2::Mover)
-#     print( "collide!( object1::Mover, object2::Mover)" * "\n" * "\n", )
-#     differenceVelocity = velocity( object1, ) - velocity( object2, )
-#     velocity!( 
-#         object1, 
-#         -.7differenceVelocity
-#         )
-#     velocity!( 
-#         object2, 
-#         .7differenceVelocity
-#         )
-#     # remove( object1, )
-#     # remove( object2, )
-#     end
+function mass( object::Mover, )
+    object.mass
+    end
 function AbsoluteLocation( object::Mover, )
     object.location
     end
@@ -1000,39 +1082,39 @@ function velocity!( object::Mover, newVelocity::AbsoluteLocation)
 function initialise!( object::Mover, )
     velocity!( object, RelativeLocation( rand( Normal( 0, object.velocityStandardDeviation, ), ), rand( Normal( 0, object.velocityStandardDeviation, ), ), ), )
     end
-function update!( object::Mover, timeDelta::Float64, gameEngineObject::Game, )
-    doPhysics!(
-        object, 
-        timeDelta, 
-        )
-    end
 
 mutable struct PlayerMover<:GameObject
     shape::Shape
     color::Colorant
+    mass::Float64
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     acceleration::Float64
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
+    physicsCorrectionMove::RelativeLocation
     function PlayerMover( 
             shape::Shape, 
             color::Colorant, 
+            mass::Real, 
             acceleration::Real, 
             location::Union{ AbsoluteLocation, Nothing, } = nothing, 
             velocity::Union{ RelativeLocation, Nothing, } = nothing, 
             )
-        new( shape, color, location, velocity, acceleration, nothing, nothing, )
+        new( shape, color, mass, location, velocity, acceleration, nothing, nothing, RelativeLocation(0, 0, ), )
         end
     end
 function mechanicalShape( object::PlayerMover, )
     object.shape
     end
-function color( object::PlayerMode, )
+function color( object::PlayerMover, )
     object.color
     end
 function Visual( object::PlayerMover, )
     Visual( mechanicalShape( object, ), color( object, ), )
+    end
+function mass( object::PlayerMover, )
+    object.mass
     end
 function AbsoluteLocation( object::PlayerMover, )
     object.location
@@ -1049,74 +1131,90 @@ function velocity!( object::PlayerMover, newVelocity::AbsoluteLocation)
     return object
     end
 function update!( object::PlayerMover, timeDelta::Float64, gameEngineObject::Game, )
-    doPhysics!(
-        object, 
-        timeDelta, 
-        )
-    if( gameEngineObject.keyboard.W )
+    if gameEngineObject.keyboard.W 
         velocity!( object, RelativeLocation( 0, -object.acceleration * timeDelta, ), )
         end
-    if( gameEngineObject.keyboard.S )
+    if gameEngineObject.keyboard.S 
         velocity!( object, RelativeLocation( 0, object.acceleration * timeDelta, ), )
         end
-    if( gameEngineObject.keyboard.A )
+    if gameEngineObject.keyboard.A 
         velocity!( object, RelativeLocation( -object.acceleration * timeDelta, 0, ), )
         end
-    if( gameEngineObject.keyboard.D )
+    if gameEngineObject.keyboard.D 
         velocity!( object, RelativeLocation( object.acceleration * timeDelta, 0, ), )
         end
     end
-function on_mouse_move!( object::PlayerMover, location::AbsoluteLocation, gameEngineObject::Game, )
-    absoluteLocation!( 
-        object, 
-        let
-            relRaw = location - AbsoluteLocation( object, )
-            relRaw = RelativeLocation( .1 * x( relRaw, ), .1* y( relRaw, ), )
-            relRaw
-            end, 
-    )
-    end
-function on_mouse_down!( object::PlayerMover, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
-    if button == GameZero.MouseButtons.MouseButton(1)
+# function on_mouse_move!( playerObject::PlayerMover, location::AbsoluteLocation, gameEngineObject::Game, )
+#     absoluteLocation!( 
+#         playerObject, 
+#         let
+#             relRaw = location - AbsoluteLocation( playerObject, )
+#             relRaw = RelativeLocation( .1 * x( relRaw, ), .1* y( relRaw, ), )
+#             relRaw
+#             end, 
+#     )
+#     end
+function on_mouse_down!( playerObject::PlayerMover, mouseLocation::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
+    if button == GameZero.MouseButtons.MouseButton(2) # middle mouse button
         spawn(
             ParticleSpawner(
-                VisualRectangle(
-                    ShapeRectangle( 30, 30, ),
+                VisualCircle(
+                    ShapeCircle( 15, ), 
                     colorant"blue",
                     ), 
                 Mover(
-                    ShapeRectangle( 10, 10, ), 
+                    ShapeCircle( 10, ), 
                     colorant"white", 
+                    1, 
                     100,
                     ), 
                 10, 
                 ), 
-            location, 
+            AbsoluteLocation( 200, 200, ), 
+            )
+        end
+    if button == GameZero.MouseButtons.MouseButton(3) # right mouse button
+        spawn(
+            Mover(
+                    ShapeRectangle( 20, 20,), 
+                    colorant"white", 
+                    1, 
+                    0,
+                    ),
+                    mouseLocation, 
+            )
+        end
+    if button == GameZero.MouseButtons.MouseButton(1)
+        absoluteLocation!( 
+            playerObject, 
+            mouseLocation, 
             )
         end
     end
 
 
 # initialise game
-spawn(
-    ParticleSpawner(
-        VisualCircle(
-            ShapeCircle( 15, ), 
-            colorant"blue",
-            ), 
-        Mover(
-            ShapeCircle( 10, ), 
-            colorant"white", 
-            100,
-            ), 
-        10, 
-        ), 
-    AbsoluteLocation( 200, 200, ), 
-    )
+# spawn(
+#     ParticleSpawner(
+#         VisualCircle(
+#             ShapeCircle( 15, ), 
+#             colorant"blue",
+#             ), 
+#         Mover(
+#             ShapeRectangle( 5, 5, ), 
+#             colorant"white", 
+#             .25^2, 
+#             100,
+#             ), 
+#         10, 
+#         ), 
+#     AbsoluteLocation( 200, 200, ), 
+#     )
 spawn(
     PlayerMover(
-        ShapeCircle( 10, ), 
+        ShapeRectangle( 20, 20, ), 
         colorant"green", 
+        1, 
         500, 
         ),
     AbsoluteLocation( 300, 200, ), 
@@ -1148,5 +1246,3 @@ for x in -1:1 # "x coordinate"
             end
         end
     end
-
-
