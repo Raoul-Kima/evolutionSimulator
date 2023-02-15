@@ -5,9 +5,9 @@ using Distributions
 
 
 # set up viewport
-WIDTH=16*60
-HEIGHT=9*60
-BACKGROUND=colorant"black"
+WIDTH = 16 * 60
+HEIGHT = 9 * 60
+BACKGROUND= colorant"black"
 
 # set up infrastructure
 actorArray = 
@@ -523,53 +523,301 @@ function LocalizedShape( object::GameObject, )
         AbsoluteLocation( object, ), 
         )
     end
-function checkCollision( object1::GameObject, ) # returns a reference to all objects colliding with the one being checked
-    # note: technically i might have a design decision that i only do one collision per tick, so it might be possible to change this function to only return one collision.
-    #   i didnt do that because i suspected that returning all collisions doesnt reduce performance much, and might be useful for dev purposes.
-    # this function can be heavily performance optimized by dividing space into a hierarchy of blocks (e.g. by binary space partition) and testing for collision along the hierarchy.
+function checkCollision( object1::GameObject, )
+    checkCollision_internal( object1, ) # this function exists for dispatch purposes (i didnt want to mess up the dispatch space of checkCollision)
+    end
+function checkCollision_internal(
+    object::GameObject, 
+    checkArea0 = LocalizedShape( ShapeRectangle( WIDTH * 1.1, HEIGHT * 1.1, RelativeLocation( .5(0 + WIDTH * 1.1), .5(0 + HEIGHT * 1.1), ), ), AbsoluteLocation( 0, 0, ), )::LocalizedShape, # checking area slightly larger than map area because i also need to detect collision with the map boundaries.
+    maxRecursionDepth = 3::Int, 
+    currentRecursionDepth = 0::Int, 
+    # x0Bounds = ( 0, WIDTH, )::Tuple{ Int, Int, }, 
+    # y0Bounds = ( 0, HEIGHT, )::Tuple{ Int, Int, }, 
+    )
+    if sizeX( Shape( checkArea0, ), ) > sizeY( Shape( checkArea0, ), )
+        checkArea1 = 
+            LocalizedShape( 
+                ShapeRectangle(
+                    .5sizeX( Shape( checkArea0, ), ),
+                    sizeY( Shape( checkArea0, ), ),
+                    RelativeLocation( 
+                        # .75 * relativeLeftBound( Shape( checkArea0, ), ) + .25 * relativeRightBound( Shape( checkArea0, ), ),  # this can be optimized further
+                        .5 * (relativeLeftBound( Shape( checkArea0, ), ) + x( RelativeLocation( Shape( checkArea0, ), ), )), 
+                        y( RelativeLocation( Shape( checkArea0, ), ), ), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                )
+        checkArea2 = 
+            LocalizedShape( 
+                ShapeRectangle(
+                    .5sizeX( Shape( checkArea0, ), ),
+                    sizeY( Shape( checkArea0, ), ),
+                    RelativeLocation( 
+                        # .25 * relativeLeftBound( Shape( checkArea0, ), ) + .75 * relativeRightBound( Shape( checkArea0, ), ), # this can be optimized further
+                        .5 * (x( RelativeLocation( Shape( checkArea0, ), ), ) + relativeRightBound( Shape( checkArea0, ), )), 
+                        y( RelativeLocation( Shape( checkArea0, ), ), ), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                )
+    else
+        checkArea1 = 
+            LocalizedShape( 
+                ShapeRectangle(
+                    sizeX( Shape( checkArea0, ), ),
+                    .5sizeY( Shape( checkArea0, ), ),
+                    RelativeLocation( 
+                        x( RelativeLocation( Shape( checkArea0, ), ), ), 
+                        .5 * (relativeUpperBound( Shape( checkArea0, ), ) + y( RelativeLocation( Shape( checkArea0, ), ), )), 
+                        # .75 * relativeUpperBound( Shape( checkArea0, ), ) + .25 * relativeLowerBound( Shape( checkArea0, ), ),  # this can be optimized further
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                )
+        checkArea2 = 
+            LocalizedShape( 
+                ShapeRectangle(
+                    sizeX( Shape( checkArea0, ), ),
+                    .5sizeY( Shape( checkArea0, ), ),
+                    RelativeLocation( 
+                        x( RelativeLocation( Shape( checkArea0, ), ), ), 
+                        .5 * (y( RelativeLocation( Shape( checkArea0, ), ), ) + relativeLowerBound( Shape( checkArea0, ), )), 
+                        # .25 * relativeUpperBound( Shape( checkArea0, ), ) + .75 * relativeLowerBound( Shape( checkArea0, ), ),  # this can be optimized further
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                )
+        end
+    # if (xBounds[2] - xBounds[1]) > (yBounds[2] - yBounds[1])
+    #     x1Bounds = ( x0Bounds[1], .5(x0Bounds[1] + x0Bounds[2]), )
+    #     y1Bounds = y0Bounds
+    #     x2Bounds = ( .5(x0Bounds[1] + x0Bounds[2]), x0Bounds[2], )
+    #     y2Bounds = y0Bounds
+    # else
+    #     x1Bounds = x0Bounds
+    #     y1Bounds = ( x0Bounds[1], .5(x0Bounds[1] + x0Bounds[2]), )
+    #     x2Bounds = x0Bounds
+    #     y2Bounds = ( .5(x0Bounds[1] + x0Bounds[2]), x0Bounds[2], )
+    #     end
 
-    # print("checkingCollision" * "\n") # dev
-    # print("type of colliding object is $(typeof( object1, ))." * "\n")
-    # print("type of mechanical bounding box of colliding object is $(typeof(mechanicalShape( object1, )))." * "\n")
+    # note: this part of the algorithm would maybe change a lot if the function had to return all colliders instead of only the first found.
+    if checkCollision( object, checkArea1, )
+        if currentRecursionDepth < maxRecursionDepth
+            out = checkCollision_internal( object, checkArea1, maxRecursionDepth, currentRecursionDepth + 1, )
+        else
+            out = checkCollision_internal_maxRecursionDepth( object, checkArea1, )
+            end
+        if out !== nothing
+            return out # note: if i already found a collider in the first check area then i don't have to check the second area because the function only has to return the first found collider.
+            end
+        end
+    if checkCollision( object, checkArea2, ) # note: theoretically i dont have to test this in all cases (for a little performance gain), but that would obfuscate the code because it would require some code duplication as far as i can see. (the most elegant way to program this might be with goto statements, which julia of course doesnt have)
+        if currentRecursionDepth < maxRecursionDepth
+            out = checkCollision_internal( object, checkArea2, maxRecursionDepth, currentRecursionDepth + 1, ) # note: this line is only executed if out so far ===nothing, so i can just overwrite out in it.
+        else
+            out = checkCollision_internal_maxRecursionDepth( object, checkArea2, ) # note: this line is only executed if out so far ===nothing, so i can just overwrite out in it.
+            end
+        return out # note: i don't have to test for ===nothing here, because its the last part of the function and so if out===nothing here i'd want to return nothing anyways.
+        end
+    end
 
-    if ( typeof( mechanicalShape( object1, ), ) != Nothing )
+function checkCollision_internal_maxRecursionDepth(
+        object::GameObject, 
+        checkArea, 
+        )
+    ...
+    # if ( typeof( mechanicalShape( object1, ), ) != Nothing )
+    #     for currentObject2 in actorArray
+    #         if !( currentObject2 === nothing ) # dont do anything if thte object has been removed (e.g. as a result of a collision)
+    #             if ( mechanicalShape( currentObject2, ) !== nothing ) # dont do collision checking if the object has no collision.
+    #                 if ( !( object1 === currentObject2 ) ) # prevent objects form colliding with themselfes
+    #                     if checkCollision( object1, currentObject2, )
+    #                         return currentObject2
+    #                     end
+    #                 end
+    #             end
+    #         end
+    #     end
+    # end
+    end
 
-        # # code to return all coliders
-        # colliders=
-        #     GameObject[] # create an empty array to collect references to colliding objects in
-        # for currentObject2 in actorArray
-        #     if( checkBoundingBoxIntersection( object1, currentObject2, ) )
-        #         push!( colliders, currentObject2, )
-        #         end
-        #     end
-        # return colliders
+struct checkAreaPartition
+    LocalizedShape::LocalizedShape
+    content::Vector
+end
 
-        # code to return only the first found collider
-        for currentObject2 in actorArray
-            if !( currentObject2 === nothing ) # dont do anything if thte object has been removed (e.g. as a result of a collision)
-                if ( mechanicalShape( currentObject2, ) !== nothing ) # dont do collision checking if the object has no collision.
-                    if ( !( object1 === currentObject2 ) ) # prevent objects form colliding with themselfes
-                        # print( "\n" * "checking collision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
-                        # print("type of collided object is $(typeof( currentObject2, ))." * "\n")
-                        # print("type of mechanical bounding box of collided object is $(typeof(mechanicalShape( currentObject2, )))." * "\n")
-                        if checkCollision( object1, currentObject2, )
-                            # print( 
-                            #     "colision detected between:" * "\n" * 
-                            #     "$(typeof(object1))" * "\n" * 
-                            #     "$(typeof(currentObject2))" * "\n", 
-                            #     )
-                            # print( "colision detected!, returning object." * "\n", )
-                            return currentObject2
-                            # todo: how to prevent that an object collides with itself?
-                        else
-                            # print( "no collision detected!" * "\n", )
-                            end
-                        end
+function partitionCheckArea( checkArea::LocalizedShape, )
+    if sizeX( Shape( checkArea, ), ) > sizeY( Shape( checkArea, ), )
+        return [
+            LocalizedShape( 
+                ShapeRectangle(
+                    .5sizeX( Shape( checkArea, ), ),
+                    sizeY( Shape( checkArea, ), ),
+                    RelativeLocation( 
+                        .5 * (relativeLeftBound( Shape( checkArea, ), ) + x( RelativeLocation( Shape( checkArea, ), ), )), 
+                        y( RelativeLocation( Shape( checkArea, ), ), ), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                ), 
+            LocalizedShape( 
+                ShapeRectangle(
+                    .5sizeX( Shape( checkArea, ), ),
+                    sizeY( Shape( checkArea, ), ),
+                    RelativeLocation( 
+                        .5 * (x( RelativeLocation( Shape( checkArea, ), ), ) + relativeRightBound( Shape( checkArea, ), )), 
+                        y( RelativeLocation( Shape( checkArea, ), ), ), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                ), 
+            ]
+    else
+        return [
+            LocalizedShape( 
+                ShapeRectangle(
+                    sizeX( Shape( checkArea, ), ),
+                    .5sizeY( Shape( checkArea, ), ),
+                    RelativeLocation( 
+                        x( RelativeLocation( Shape( checkArea, ), ), ), 
+                        .5 * (relativeUpperBound( Shape( checkArea, ), ) + y( RelativeLocation( Shape( checkArea, ), ), )), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                ), 
+            LocalizedShape( 
+                ShapeRectangle(
+                    sizeX( Shape( checkArea, ), ),
+                    .5sizeY( Shape( checkArea, ), ),
+                    RelativeLocation( 
+                        x( RelativeLocation( Shape( checkArea, ), ), ), 
+                        .5 * (y( RelativeLocation( Shape( checkArea, ), ), ) + relativeLowerBound( Shape( checkArea, ), )), 
+                        ), 
+                    ), 
+                    AbsoluteLocation( 0, 0, ), 
+                ), 
+            ]
+        end
+    end
+
+
+function checkCollision_internal_createPartitionIndex( # creates a recursive structure that specifies which partitions touch which objects
+        checkArea = LocalizedShape( ShapeRectangle( WIDTH * 1.1, HEIGHT * 1.1, RelativeLocation( .5(0 + WIDTH * 1.1), .5(0 + HEIGHT * 1.1), ), ), AbsoluteLocation( 0, 0, ), )::LocalizedShape, # checking area slightly larger than map area because i also need to detect collision with the map boundaries.
+        maxRecursionDepth = 3::Int, 
+        currentRecursionDepth = 0::Int, 
+        )
+    # note: comments that are shared with checkCollision_internal() have been omitted here. see there to see them.
+    if currentRecursionDepth >= maxRecursionDepth
+        return checkCollision_internal_ArrayOfAllActorsInArea( checkArea, )
+    else
+        return [ checkCollision_internal_createPartitionIndex( currCheckAreaPartition, maxRecursionDepth, currentRecursionDepth + 1, ) for currCheckAreaPartition in partitionCheckArea( checkArea, ) ]
+        end
+    end
+
+function checkCollision_internal_ArrayOfAllActorsInArea( checkArea::LocalizedShape, )
+    actorsInArea=[]
+    for currActor in actorArray
+        if currActor !== nothing # only proceed if the objects still exists.
+            if ( mechanicalShape( currActor, ) !== nothing ) # dont do collision checking if the object has no collision.
+                if checkCollision( currActor, checkArea, )
+                    push!( actorsInArea, currActor, )
                     end
                 end
             end
         end
+    return actorsInArea
     end
+
+
+# space partition index online updating
+#   with current physics engine (moves objects one at a time, doesnt do movements that lead to collision)
+#   one solution is to implement it in absoluteLocation!(::GameObject)
+#       that would automatically make it work with spawn().
+#       havent thought about how it would be with remove() in that case.
+#       moveAndCollide!() would then only test collision with LocalizedShape and only move the object if no collision is found.
+#   one solution is to implement it in every function that influences the position/existence of an object:
+#       remove
+#       spawn
+#       moveAndCollide!():
+#          with the current physics engine:
+#              if a collision is detected the object goes back to its initial location, so the index doesn't have to be updated.
+#                  this also means that it's no problem that the algorithm ends on the first detection (if there is one) rather then iterating through all partitions.
+#              if no collision is detected after the move:
+#                  add the object to every leaf-partition it touches
+#                      via push!
+#                  remove the object from every leaf-partition it touched in its previous position.
+#                      by setting its entry to nothing and cleaning up all the nothings at regular intervals
+#                          i need to do i this way to avoid having to copy half of the array on each update
+#                              at regular intervals i should remove all the nothings in all leaf-partitions, so they don't pile up
+#                                  (it can't just be done when the partision is queried for collisions the next time because that would happen too often. and it may (but i think not) be possible that nothings would still pile up in som corner cases)
+#                                  i probably dont need to do this every engine tick, but should try to spread out the workload over ticks, so i could e.g. "clean" a subset of all partitions each tick.
+#                  so i have to check partition touches three times: once for collision checking, once for index adding, once for index removing.
+
+# todo binary space partision:
+#   problem:
+#       i set out to create the index at each engine tick, but...
+#           actually i have to update it with every object move ...
+#               at least with the current physics engine.
+#                   maybe in the future i will move all objects at once (and do no correction moves in the same tick, so only one move per object per tick, all simultaneously)
+#   there's a lot of refactoring i can do (but maybe its better to do that later when i know more about how the final alrogrihm looks like and what data structure it uses, and: performance is priority)
+#       e.g. write newCheckAreas = partitionCheckArea( checkArea, )
+#   i somehow have to make an index of what objects are touching what partition
+#       for that i need a way to refer to the partitions across functions
+#       i could either/or:
+#           have a specialized pre-pass build this info every tick
+#               maybe i could also pass the shapes of the checkAreas on. (but maybe its better for performance not to do so)
+#           or i could collect it once at the beginning and then update it for each object whenever moveAndCollide! or spawn! or remove! get used on it.
+#                   thats a bit messy. i'd rather not have it interact with the other functions.
+#                   when i execute these i have to check in which partition the object is anyways, so maybe i get that info for free then
+#                       but maybe that also isnt useful as the overhead for doing that might be larger then just computing the partitions for each object in a pre-pass.
+
+# function checkCollision( object1::GameObject, ) # returns a reference to all objects colliding with the one being checked
+#     # note: technically i might have a design decision that i only do one collision per tick, so it might be possible to change this function to only return one collision.
+#     #   i didnt do that because i suspected that returning all collisions doesnt reduce performance much, and might be useful for dev purposes.
+#     # this function can be heavily performance optimized by dividing space into a hierarchy of blocks (e.g. by binary space partition) and testing for collision along the hierarchy.
+
+#     # print("checkingCollision" * "\n") # dev
+#     # print("type of colliding object is $(typeof( object1, ))." * "\n")
+#     # print("type of mechanical bounding box of colliding object is $(typeof(mechanicalShape( object1, )))." * "\n")
+
+#     if ( typeof( mechanicalShape( object1, ), ) != Nothing )
+
+#         # # code to return all coliders
+#         # colliders=
+#         #     GameObject[] # create an empty array to collect references to colliding objects in
+#         # for currentObject2 in actorArray
+#         #     if( checkBoundingBoxIntersection( object1, currentObject2, ) )
+#         #         push!( colliders, currentObject2, )
+#         #         end
+#         #     end
+#         # return colliders
+
+#         # code to return only the first found collider
+#         for currentObject2 in actorArray
+#             if !( currentObject2 === nothing ) # dont do anything if thte object has been removed (e.g. as a result of a collision)
+#                 if ( mechanicalShape( currentObject2, ) !== nothing ) # dont do collision checking if the object has no collision.
+#                     if ( !( object1 === currentObject2 ) ) # prevent objects form colliding with themselfes
+#                         # print( "\n" * "checking collision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
+#                         # print("type of collided object is $(typeof( currentObject2, ))." * "\n")
+#                         # print("type of mechanical bounding box of collided object is $(typeof(mechanicalShape( currentObject2, )))." * "\n")
+#                         if checkCollision( object1, currentObject2, )
+#                             # print( 
+#                             #     "colision detected between:" * "\n" * 
+#                             #     "$(typeof(object1))" * "\n" * 
+#                             #     "$(typeof(currentObject2))" * "\n", 
+#                             #     )
+#                             # print( "colision detected!, returning object." * "\n", )
+#                             return currentObject2
+#                         else
+#                             # print( "no collision detected!" * "\n", )
+#                             end
+#                         end
+#                     end
+#                 end
+#             end
+#         end
+#     end
 function checkCollision( localizedShape::LocalizedShape, ) # returns a reference to all objects colliding with the localizedShape being checked
     # note: for comments and print statements see checkCollision( object1::GameObject, )
     for currentObject in actorArray
@@ -591,7 +839,7 @@ function checkCollision( # checks whether two objects intersect
         LocalizedShape( object2, ), 
         )
     end
-function checkCollision( # checks whether two objects intersect 
+function checkCollision(
         object::GameObject, 
         localizedShape::LocalizedShape, 
         )
@@ -600,7 +848,7 @@ function checkCollision( # checks whether two objects intersect
         localizedShape, 
         )
     end
-function checkCollision( # checks whether two objects intersect 
+function checkCollision(
         localizedShape::LocalizedShape, 
         object::GameObject, 
         )
@@ -1028,7 +1276,7 @@ mutable struct PlayerMover<:GameObject
 function mechanicalShape( object::PlayerMover, )
     object.shape
     end
-function color( object::PlayerMode, )
+function color( object::PlayerMover, )
     object.color
     end
 function Visual( object::PlayerMover, )
@@ -1126,7 +1374,7 @@ spawn(
         ShapeRectangle( 100, 100, ),
         colorant"white", 
         ), 
-    AbsoluteLocation( 300, 300, ), 
+    AbsoluteLocation( 500, 300, ), 
     )
 # create blockers around visible area
 for x in -1:1 # "x coordinate"
