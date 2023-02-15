@@ -171,48 +171,55 @@ function RelativeLocation( absoluteLocation::AbsoluteLocation, )
     RelativeLocation( x( absoluteLocation, ), y( absoluteLocation, ), )
     end
 function AbsoluteLocation( object::Any, ) # query location of an object relative to the objects origin ( = world origin)
-    error("No method for AbsoluteLocation() was found for type $(typeof(object)). Either the object uses relative positioning or the method implementation was forgotten. To be able to interact with the location of an object using absolute positioning of of type A, it must implement both AbsoluteLocation(::A) and AbsoluteLocation!(::A,::AbsoluteLocation), But not AbsoluteLocation!(::A,::RelativeLocation), as that is inherited.")
+    error("No method for AbsoluteLocation() was found for type $(typeof(object)). Either the object doesnt have the notion of location, uses relative positioning or the method implementation was forgotten. To be able to interact with the location of an object it must implement both AbsoluteLocation(object) and absoluteLocation!(object,::AbsoluteLocation), but not absoluteLocation!(::A,::RelativeLocation), as that is inherited.")
     end
-function AbsoluteLocation!( object::Any, location::AbsoluteLocation, ) # move object to a location relative to the objects origin ( = world origin)
-    error("No method for AbsoluteLocation!() was found for type $(typeof(object)). Either the object uses relative positioning or the method implementation was forgotten. To be able to interact with the location of an object using absolute positioning of of type A, it must implement both AbsoluteLocation(::A) and AbsoluteLocation!(::A,::AbsoluteLocation), But not AbsoluteLocation!(::A,::RelativeLocation), as that is inherited.")
+function absoluteLocation!( object::Any, location::AbsoluteLocation, ) # move object to a location relative to the objects origin ( = world origin)
+    error("No method for absoluteLocation!( object, ::AbsoluteLocation, ) was found for type $(typeof(object)). Either the object doesnt have the notion of location, is immutable, or it uses relative positioning or the method implementation was forgotten. To be able to interact with the location of an object it must implement both AbsoluteLocation(object) and absoluteLocation!(object,::AbsoluteLocation), but not absoluteLocation!(::A,::RelativeLocation), as that is inherited.")
     end
-function AbsoluteLocation!( object::Any, relativeLocation::RelativeLocation, ) # move object to a location relative to the object
-    AbsoluteLocation!( 
+function absoluteLocation!( object::Any, relativeLocation::RelativeLocation, ) # move object to a location relative to the object
+    absoluteLocation!( 
         object, 
         AbsoluteLocation( object, ) + relativeLocation, 
         )
     return object
     end
 function RelativeLocation( object::Any, ) # query location of an object relative to the objects origin ( = location of the containing object)
-    error("No method for RelativeLocation() was found for type $(typeof(object)). Either the object uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object using relative positioning of of type A, it must implement both RelativeLocation(::A) and RelativeLocation(::A,::AbsoluteLocation), But not RelativeLocation(::A,::RelativeLocation), as that is inherited.")
+    error("No method for RelativeLocation!() was found for type $(typeof(object)). Either the object doesn't have the notion of location, the object is immutable, or it uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object it must implement both RelativeLocation(object) and relativeLocation!(object,::AbsoluteLocation), but not relativeLocation(object,::RelativeLocation), as that is inherited.")
     end
-function RelativeLocation!( object::Any, location::AbsoluteLocation, ) # move object to a location relative to the objects origin ( = location of the containing object)
-    error("No method for RelativeLocation!( object, location::AbsoluteLocation, ) was found for type $(typeof(object)). Either the object is immutable, or it uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object using relative positioning, it must be mutable and implement both RelativeLocation(object) and RelativeLocation!(object,::AbsoluteLocation), But possibly not RelativeLocation!(object,::RelativeLocation), as that may be inherited.")
+function relativeLocation!( object::Any, location::AbsoluteLocation, ) # move object to a location relative to the objects origin ( = location of the containing object)
+    error("No method for relativeLocation!( object, location::AbsoluteLocation, ) was found for type $(typeof(object)). Either the object doesn't have the notion of location, the object is immutable, or it uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object it must implement both RelativeLocation(object) and relativeLocation!(object,::AbsoluteLocation), but not relativeLocation(object,::RelativeLocation), as that is inherited.")
     end
-function RelativeLocation!( object::Any, relativeLocation::RelativeLocation, ) # move object to a location relative to the object
-    error("No method for RelativeLocation!( object, location::RelativeLocation, ) was found for type $(typeof(object)). Either the object is immutable, or it uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object using relative positioning, it must be mutable and implement both RelativeLocation(object) and RelativeLocation!(object,::AbsoluteLocation), But possibly not RelativeLocation!(object,::RelativeLocation), as that may be inherited.")
-    # RelativeLocation!( # example code to implement RelativeLocation!( object, relativeLocation::RelativeLocation, ) 
-    #     object, 
-    #     RelativeLocation( object, ) + relativeLocation, 
-    #     )
-    # return object
-    end
-
-# note: for some reason when i deactivate this code block i get an error message that the constructor for Rect is missing.
-function RelativeLocation( rect::Rect, ) # see not above code block
-    RelativeLocation( rect.x + .5rect.w , rect.y + .5rect.h, )
-    end
-function RelativeLocation!( rect::Rect, location::AbsoluteLocation, ) # see not above code block
-    rect.x = location.x - .5rect.w
-    rect.y = location.y - .5rect.h
-    return rect
+function relativeLocation!( object::Any, relativeLocation::RelativeLocation, ) # move object to a location relative to the object
+    relativeLocation!(
+        object, 
+        RelativeLocation( object, ) + relativeLocation, 
+        )
+    return object
     end
 
-struct Rectangle
+abstract type AbstractShape
+    end
+function RelativeLocation( object::AbstractShape, )
+    error("No method RelativeLocation(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+    end
+function leftBound( object::AbstractShape, )
+    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+    end
+function rightBound( object::AbstractShape, )
+    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+    end
+function upperBound( object::AbstractShape, )
+    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+    end
+function lowerBound( object::AbstractShape, )
+    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+    end
+
+struct ShapeRectangle<:AbstractShape
     relativeLocationOfUpperLeftCorner::RelativeLocation
     sizeX::Float64
     sizeY::Float64
-    function Rectangle( centerpointLocation::RelativeLocation, sizeX::Real, sizeY::Real, ) # the parameterisation of size might change in the future. see comments in its acessor functions.
+    function ShapeRectangle( centerpointLocation::RelativeLocation, sizeX::Real, sizeY::Real, ) # the parameterisation of size might change in the future. see comments in its acessor functions.
         new( 
             RelativeLocation( 
                 x( centerpointLocation, ) - .5sizeX, 
@@ -223,79 +230,142 @@ struct Rectangle
             )
         end
     end
-# function size( rectangle::Rectangle)
-#     ... # not implemented yet as im not sure about the return type yet (as relativeLocation will probably include rotation at some point, which doesnt make sense for size.). might be a vector, might be a RelativeLocation, might be something else. (i also may still change the internal data structure of Ractangel in that regard)
+# function size( rectangle::ShapeRectangle)
+#     ... # not implemented yet as im not sure about the return type yet (as RelativeLocation will probably include rotation at some point, which doesnt make sense for size.). might be a vector, might be a RelativeLocation, might be something else. (i also may still change the internal data structure of Ractangel in that regard)
 #     end
-function sizeX( rectangle::Rectangle, ) # this function will probably be replaced by x( size( rectangle, ), ) at some point.
+function sizeX( rectangle::ShapeRectangle, ) # this function will probably be replaced by x( size( rectangle, ), ) at some point.
     rectangle.sizeX
     end
-function sizeY( rectangle::Rectangle, ) # this function will probably be replaced by y( size( rectangle, ), ) at some point.
+function sizeY( rectangle::ShapeRectangle, ) # this function will probably be replaced by y( size( rectangle, ), ) at some point.
     rectangle.sizeY
     end
-function RelativeLocation( rectangle::Rectangle, )
+function RelativeLocation( rectangle::ShapeRectangle, )
     rectangle.relativeLocationOfUpperLeftCorner + RelativeLocation( .5sizeX( rectangle, ), .5sizeY( rectangle, ), ) # compute centerpoint coordinates
     end
-function leftBound( rectangle::Rectangle, )
+function leftBound( rectangle::ShapeRectangle, )
     x( rectangle.relativeLocationOfUpperLeftCorner, ) # using low level access for performance
     end
-function rightBound( rectangle::Rectangle, )
+function rightBound( rectangle::ShapeRectangle, )
     x( rectangle.relativeLocationOfUpperLeftCorner, ) + sizeX( rectangle, ) # using low level access for performance
     end
-function upperBound( rectangle::Rectangle, )
+function upperBound( rectangle::ShapeRectangle, )
     y( rectangle.relativeLocationOfUpperLeftCorner, ) # using low level access for performance
     end
-function lowerBound( rectangle::Rectangle, )
+function lowerBound( rectangle::ShapeRectangle, )
     y( rectangle.relativeLocationOfUpperLeftCorner, ) + sizeY( rectangle, ) # using low level access for performance
     end
-function Rect( rectangle::Rectangle, )
-    Rect( 
-        leftBound( rectangle, ), 
-        upperBound( rectangle, ), 
-        sizeX( rectangle, ), 
-        sizeY( rectangle, ), 
-        )
+# function Rect( rectangle::ShapeRectangle, )
+#     Rect( 
+#         leftBound( rectangle, ), 
+#         upperBound( rectangle, ), 
+#         sizeX( rectangle, ), 
+#         sizeY( rectangle, ), 
+#         )
+#     end
+
+struct ShapeCircle<:AbstractShape
+    centerpointLocation::RelativeLocation
+    radius::Float64
+    end
+function radius( object::ShapeCircle, )
+    object.radius
+    end
+function RelativeLocation( object::ShapeCircle, )
+    object.centerpointLocation
+    end
+function leftBound( object::ShapeCircle, )
+    x( RelativeLocation( object, ), ) - radius( object, )
+    end
+function rightBound( object::ShapeCircle, )
+    x( RelativeLocation( object, ), ) + radius( object, )
+    end
+function upperBound( object::ShapeCircle, )
+    y( RelativeLocation( object, ), ) - radius( object, )
+    end
+function lowerBound( object::ShapeCircle, )
+    y( RelativeLocation( object, ), ) + radius( object, )
+    end
+# function Circle( object::ShapeCircle, )
+#     Circle( 
+#         x( RelativeLocation( object, ), ), 
+#         y( RelativeLocation( object, ), ), 
+#         radius( object, ), 
+#         )
+#     end
+
+# note: for some reason when i deactivate this code block i get an error message that the constructor for Rect is missing.
+function RelativeLocation( rect::Rect, ) # see note above code block
+    RelativeLocation( rect.x + .5rect.w , rect.y + .5rect.h, )
+    end
+function relativeLocation!( rect::Rect, location::AbsoluteLocation, ) # see note above code block
+    rect.x = location.x - .5rect.w
+    rect.y = location.y - .5rect.h
+    return rect
     end
 
+# note: when i deactivate this code block i will probably get an error message that the constructor for Circle is missing for some reason.
+function RelativeLocation( circle::Circle, ) # see note above code block
+    RelativeLocation( circle.x, circle.y, )
+    end
+function relativeLocation!( circle::Circle, location::AbsoluteLocation, ) # see note above code block
+    circle.x = x( location, )
+    circle.y = y( location, )
+    return circle
+    end
+
+struct LocalizedShape{shapeType<:AbstractShape} # used for collision checking.
+    shape::shapeType
+    location::AbsoluteLocation
+end
+function shape( object::LocalizedShape, )
+    object.shape
+    end
+function location( object::LocalizedShape, )
+    object.location
+    end
 
 abstract type AbstractVisual
     end
 function RelativeLocation( object::AbstractVisual, )
-    error("No method for RelativeLocation() was found for type $(typeof(object)). Subtypes of AbstractVisual need to have such a method.")
+    error("No method for RelativeLocation(::$(typeof(object)))) was found. Subtypes of AbstractVisual need to have such a method.")
     end
-# function RelativeLocation!( object::AbstractVisual, location::AbsoluteLocation, )
-#     error("No method for RelativeLocation!() was found for type $(typeof(object)). Subtypes of AbstractVisual need to have such a method.")
+# function relativeLocation!( object::AbstractVisual, location::AbsoluteLocation, )
+#     error("No method for relativeLocation!(::$(typeof(object))),::AbsoluteLOcation) was found. Subtypes of AbstractVisual need to have such a method.")
 #     end
 # function drawToCanvas( visual::AbstractVisual, )
-#     error("No method for drawToCanvas( visual, ) was found for type $(typeof(object)). Subtypes of AbstractVisual need to have such a method.")
+#     error("No method for drawToCanvas( visual::$(typeof(object))), ) was found. Subtypes of AbstractVisual need to have such a method.")
 #     end
 function drawToCanvas( visual::AbstractVisual, location::AbsoluteLocation, )
-    error("No method for drawToCanvas( visual, ::AbstractLocation, ) was found for type $(typeof(object)). Subtypes of AbstractVisual need to have such a method.")
+    error("No method for drawToCanvas( ::$(typeof(object)), ::AbstractLocation, ) was found. Subtypes of AbstractVisual need to have such a method.")
+    end
+function visual( shape::AbstractShape, color::Colorant, )
+    error("No method visual( shape::$(typeof(object)), color::Colorant, ) was found. Subtypes of AbstractVisual need to have such a method.")
     end
 
-struct VisualBox<:AbstractVisual
-    shape::Rectangle
+struct VisualRectangle<:AbstractVisual
+    shape::ShapeRectangle
     color::Colorant
     end
-function RelativeLocation( object::VisualBox, )
+function RelativeLocation( object::VisualRectangle, )
     RelativeLocation( object.shape, )
     end
-function shape( object::VisualBox, )
+function shape( object::VisualRectangle, )
     object.shape
     end
-# function RelativeLocation!( object::VisualBox, location::AbsoluteLocation, )
-#     RelativeLocation!( 
+# function relativeLocation!( object::VisualRectangle, location::AbsoluteLocation, )
+#     relativeLocation!( 
 #         object.shape, 
 #         location, 
 #         )
 #     return object
 #     end
-# function drawToCanvas( visual::VisualBox, )
+# function drawToCanvas( visual::VisualRectangle, )
 #     drawToCanvas( 
 #         visual.shape, 
 #         visual.color, 
 #         ) 
 #     end
-function drawToCanvas( visual::VisualBox, location::AbsoluteLocation, )
+function drawToCanvas( visual::VisualRectangle, location::AbsoluteLocation, )
     draw( # uses the GameZero engines internal draw method.
         Rect( 
             convert( Int, round( leftBound( shape( visual, ), ) + x( location, ), ), ), 
@@ -306,8 +376,51 @@ function drawToCanvas( visual::VisualBox, location::AbsoluteLocation, )
         visual.color, 
         ) 
     end
-function color( visual::VisualBox, )
+function color( visual::VisualRectangle, )
     visual.color
+    end
+function visual( shape::ShapeRectangle, color::Colorant, )
+    VisualRectangle( shape, color, )
+    end
+
+struct VisualCircle<:AbstractVisual
+    shape::ShapeCircle
+    color::Colorant
+    end
+function RelativeLocation( object::VisualCircle, )
+    RelativeLocation( object.shape, )
+    end
+function shape( object::VisualCircle, )
+    object.shape
+    end
+# function relativeLocation!( object::VisualCircle, location::AbsoluteLocation, )
+#     relativeLocation!( 
+#         object.shape, 
+#         location, 
+#         )
+#     return object
+#     end
+# function drawToCanvas( visual::VisualCircle, )
+#     drawToCanvas( 
+#         visual.shape, 
+#         visual.color, 
+#         ) 
+#     end
+function drawToCanvas( visual::VisualCircle, drawingLocation::AbsoluteLocation, )
+    draw( # uses the GameZero engines internal draw method.
+        Circle( 
+            convert( Int, round( x( RelativeLocation( visual, ), ) + x( drawingLocation, ), ), ), 
+            convert( Int, round( y( RelativeLocation( visual, ), ) + y( drawingLocation, ), ), ), 
+            radius( shape( visual, ), ), 
+            ), 
+        visual.color, 
+        ) 
+    end
+function color( visual::VisualCircle, )
+    visual.color
+    end
+function visual( shape::ShapeCircle, color::Colorant, )
+    VisualCircle( shape, color, )
     end
 
 abstract type AbstractGameObject
@@ -351,9 +464,12 @@ function spawn(
     spawnedObject = actorArray[end]
     spawnedObject.spawnedInCurrentTick = true
     currentActorArrayIndex!( spawnedObject, length( actorArray, ), )
-    AbsoluteLocation!( spawnedObject, location, )
-    velocity!( spawnedObject, AbsoluteLocation( 0, 0, ), ) # at some point i'll probably have to implement spawning moving objects (e.g. because they get spawned by a moving object)
+    absoluteLocation!( spawnedObject, location, )
+    initialiseVelocity!( spawnedObject, AbsoluteLocation( 0, 0, ), ) # at some point i'll probably have to implement spawning moving objects (e.g. because they get spawned by a moving object)
     initialise!( spawnedObject, )
+    end
+function initialiseVelocity!( object::AbstractGameObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
+    velocity!( object, velocity, )
     end
 function remove( object::AbstractGameObject, )
     global actorArray
@@ -404,7 +520,7 @@ function moveByInertiaAndCollide!( object::AbstractGameObject, timeDelta::Float6
     #               one object is much heavier than the other
     #               the objects have similar absolute velocity vectors (that is speed and direction)
     # print( "moveByInertiaAndCollide!-printStatement1" * "\n", )
-    AbsoluteLocation!( 
+    absoluteLocation!( 
         object, 
         RelativeLocation( x( velocity( object, ), ) * timeDelta, y( velocity( object, ), ) * timeDelta, )
         )    
@@ -418,7 +534,7 @@ function moveByInertiaAndCollide!( object::AbstractGameObject, timeDelta::Float6
     # print("moveByInertiaAndCollide!-printStatement3" * "\n")
     if( collidingObject != nothing )
         # print("moveByInertiaAndCollide!-printStatement4" * "\n")
-        AbsoluteLocation!( # move object back to its previous (non-colliding) position 
+        absoluteLocation!( # move object back to its previous (non-colliding) position 
             object, 
             RelativeLocation( x( velocity( object, ), ) * -timeDelta, y( velocity( object, ), ) * -timeDelta, )
             )   
@@ -460,7 +576,7 @@ function checkCollision( object1::AbstractGameObject, ) # returns a reference to
                         # print( "checking ocllision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
                         # print("type of collided object is $(typeof( currentObject2, ))." * "\n")
                         # print("type of mechanical bounding box of collided object is $(typeof(relativeMechanicalBoundingBox( currentObject2, )))." * "\n")
-                        if ( checkBoundingBoxIntersection( object1, currentObject2, ) )
+                        if ( checkCollision( object1, currentObject2, ) )
                             # print( 
                             #     "colision detected between:" * "\n" * 
                             #     "$(typeof(object1))" * "\n" * 
@@ -478,25 +594,40 @@ function checkCollision( object1::AbstractGameObject, ) # returns a reference to
             end
         end
     end
-function checkBoundingBoxIntersection( # checks whether the bounding boxes of two objects intersect 
-    object1::AbstractGameObject, 
-    object2::AbstractGameObject, 
-    )
-    # print( "checking bounding box intersection. Bounding boxes are: $(absoluteMechanicalBoundingBox(object1)) and $(absoluteMechanicalBoundingBox(object2))" * "\n", )
-    checkBoundingBoxIntersection1d( object1, object2, 1, ) & checkBoundingBoxIntersection1d( object1, object2, 2, )
-end
-function checkBoundingBoxIntersection1d( # component of checkBoundingBoxIntersection()
+function checkCollision( # checks whether the bounding boxes of two objects intersect 
         object1::AbstractGameObject, 
         object2::AbstractGameObject, 
-        dimension::Int, # which dimension to check (can be either 1 or 2)
         )
+    checkCollision(
+        LocalizedShape( mechanicalShape( object1, ), location( object1, ), ), 
+        LocalizedShape( mechanicalShape( object2, ), location( object2, ), ), 
+    )
+    end
+function checkCollision( # checks whether the bounding boxes of two objects intersect 
+        shape1::LocalizedShape, 
+        shape2::LocalizedShape, 
+        )
+    error("No method found to check collision between a LocalizedShape of type $(typeof(shape1)) and a LocalizedShape of type $(typeof(shape2)).")
+end
+function checkCollision( # checks whether the bounding boxes of two objects intersect 
+        shape1::LocalizedShape{coordinateAlignedBoundingBox}, 
+        shape2::LocalizedShape{coordinateAlignedBoundingBox}, 
+        )
+    # print( "checking bounding box intersection. Bounding boxes are: $(absoluteMechanicalBoundingBox(object1)) and $(absoluteMechanicalBoundingBox(object2))" * "\n", )
+    checkBoundingBoxIntersection1d( shape1, shape2, 1, ) & checkBoundingBoxIntersection1d( shape1, shape2, 2, )
+end
+function checkBoundingBoxIntersection1d( # component of checkBoundingBoxIntersection()
+            object1::AbstractGameObject, 
+            object2::AbstractGameObject, 
+            dimension::Int, # which dimension to check (can be either 1 or 2)
+            )
         checkBoundingBoxIntersection1dOneSided( object1, object2, dimension, ) & checkBoundingBoxIntersection1dOneSided( object2, object1, dimension, )
     end
 function checkBoundingBoxIntersection1dOneSided( # component of checkBoundingBoxIntersection1d()
-        object1::AbstractGameObject, 
-        object2::AbstractGameObject, 
-        dimension::Int, 
-        )
+            object1::AbstractGameObject, 
+            object2::AbstractGameObject, 
+            dimension::Int, 
+            )
         # print( "checking dimension $dimension." * "\n", )
         if( dimension == 1 )
             # print( 
@@ -589,7 +720,7 @@ function drawToCanvas( object::AbstractGameObject, ) # draws a visualisation of 
     drawToCanvas( 
         visual( object, ), 
         AbsoluteLocation( object, ), 
-        # RelativeLocation!( # the drawToCanvas function needs absolut locations, so i'm rebasing the location of the visual to be based on the world location rather then its parent obejct.
+        # relativeLocation!( # the drawToCanvas function needs absolut locations, so i'm rebasing the location of the visual to be based on the world location rather then its parent obejct.
         #     deepcopy( visual( object, ), ),  
         #     AbsoluteLocation( object, ) + RelativeLocation( visual( object, ), ), 
         #     ), 
@@ -598,16 +729,19 @@ function drawToCanvas( object::AbstractGameObject, ) # draws a visualisation of 
 function visual( object::AbstractGameObject, ) # returns an object that can be drawn by drawToCanvas()
     error("No method for visual() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
     end
-function relativeMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, Rectangle, } # returns the a bounding box of an object
+function mechanicalShape( object::AbstractGameObject, )
+    error("No method mechanicalShape( object::$(typeof(object)), ) was found. Subtypes of AbstractGameObject need to have such a method.")
+    end
+function relativeMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, ShapeRectangle, } # returns the a bounding box of an object
     error("No method for relativeMechanicalBoundingBox() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
     end
-# function absoluteMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, Rectangle, } # returns an absolutely placed copy of the bounding box of an object for collision checking (although it internally still uses type RelativeLocation to represent its location)
+# function absoluteMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, ShapeRectangle, } # returns an absolutely placed copy of the bounding box of an object for collision checking (although it internally still uses type RelativeLocation to represent its location)
 #   # note: i might remove this function as i switched to use low level programming for functions such as draw and checkCollision, so they now internally move the coordinates to the absolute position.
 #   #     this was a design decision i made, so it's not going to change and having #  +                things that need to have an absolutely positioned rectangle such as draw() and checkBoundingBoxIntersection() should probabl best be low-level programmed, so they just take the object position and the relatively positioned rectangle as input.
 #                       -> remove absoluteMechanicalBoundingBox() ?() might now be unidiomatic.
 #     if relativeMechanicalBoundingBox( object, ) != nothing 
 #         return (
-#             RelativeLocation!(
+#             relativeLocation!(
 #                 deepcopy( 
 #                     relativeMechanicalBoundingBox( object, ), 
 #                     ), 
@@ -621,8 +755,8 @@ function relativeMechanicalBoundingBox( object::AbstractGameObject, )::Union{ No
 function AbsoluteLocation( object::AbstractGameObject, ) # returns the location of an object
     error("No method for AbsoluteLocation() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
     end
-function AbsoluteLocation!( object::AbstractGameObject, location::AbsoluteLocation, ) # sets the location of an object to a given location
-    error("No method for AbsoluteLocation!( ::AbstractGameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method. Note that a method AbsoluteLocation!( ::AbstractGameObject, ::RelativeLocation) is not required as it is inherited.")
+function absoluteLocation!( object::AbstractGameObject, location::AbsoluteLocation, ) # sets the location of an object to a given location
+    error("No method for absoluteLocation!( ::AbstractGameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method. Note that a method absoluteLocation!( ::AbstractGameObject, ::RelativeLocation) is not required as it is inherited.")
     end
 function velocity( object::AbstractGameObject, )
     error("No method for velocity() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
@@ -638,39 +772,48 @@ function velocity!( object::AbstractGameObject, impulse::RelativeLocation, ) # c
     return object
     end
 
-mutable struct StaticBox<:AbstractGameObject
-    box::Rectangle
+abstract type AbstractStaticObject<:AbstractGameObject
+    end
+
+mutable struct StaticObject<:AbstractStaticObject
+    shape::AbstractShape
     color::Colorant
     location::Union{ AbsoluteLocation, Nothing, }
-    velocity::Union{ RelativeLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function StaticBox( box::Rectangle, color::Colorant, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
-        new( box, color, location, velocity, nothing, nothing, )
+    function StaticObject( shape::AbstractShape, color::Colorant, location::Union{ AbsoluteLocation, Nothing, }=nothing, )
+        new( shape, color, location, nothing, nothing, )
         end
     end
-function visual( object::StaticBox, )
-    VisualBox( object.box, object.color, ) 
+function visual( object::StaticObject, )
+    visual( object.shape, object.color, ) 
     end
-function relativeMechanicalBoundingBox( object::StaticBox, )
-    object.box
+function mechanicalShape( object::StaticObject, )
+    object.shape
     end
-function AbsoluteLocation( object::StaticBox, )
+function relativeMechanicalBoundingBox( object::StaticObject, )
+    object.shape
+    end
+function AbsoluteLocation( object::StaticObject, )
     object.location
     end
-function AbsoluteLocation!( object::StaticBox, location::AbsoluteLocation, )
+function absoluteLocation!( object::StaticObject, location::AbsoluteLocation, )
     object.location = location
     return object
     end
-function velocity( object::StaticBox, )
-    object.velocity
+function velocity( object::StaticObject, )
+    RelativeLocation( 0, 0, )
     end    
-function velocity!( object::StaticBox, newVelocity::AbsoluteLocation)
-    object.velocity = RelativeLocation( newVelocity, )
-    return object
+function velocity!( object::StaticObject, newVelocity::AbsoluteLocation, )
+    error("Can't assign velocity to a StaticObject.")
+    # if newVelocity != RelativeLocation( 0, 0, )
+    #     error("Can't give a non-zero velocity to a StaticObject.")
+    #     end
     end
-function collide!( object1::StaticBox, object2::AbstractGameObject, )
-        print( "collide!( object1::StaticBox, object2::AbstractGameObject, )" * "\n" * "\n", )
+function initialiseVelocity!( object::StaticObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
+    end
+function collide!( object1::StaticObject, object2::AbstractGameObject, )
+        print( "collide!( object1::StaticObject, object2::AbstractGameObject, )" * "\n" * "\n", )
         differenceVelocity = velocity( object1, ) - velocity( object2, )
         # print("velocity1 = $(velocity(object1))\n")
         # print("velocity2 = $(velocity(object2))\n")
@@ -681,12 +824,13 @@ function collide!( object1::StaticBox, object2::AbstractGameObject, )
             1.4differenceVelocity
             )
     end
-function collide!( object1::AbstractGameObject, object2::StaticBox, ) # just a wrapper to switch the arguments around
+function collide!( object1::AbstractGameObject, object2::StaticObject, ) # just a wrapper to switch the arguments around
     collide!( object2, object1, )
     end
-function collide!( object1::StaticBox, object2::StaticBox, )
-    print("s")
+function collide!( object1::StaticObject, object2::StaticObject, )
+    error("collision between static objects registered")
     end
+
 abstract type AbstractParticleSpawner<:AbstractGameObject
     end
 
@@ -718,13 +862,19 @@ mutable struct ParticleSpawner<:AbstractParticleSpawner
             )
         end
     end
+function visual( object::ParticleSpawner, )
+    object.visual
+    end
+function mechanicalShape( object::ParticleSpawner, )
+    return nothing
+    end
 function relativeMechanicalBoundingBox( object::ParticleSpawner, )
     return nothing
 end
 function AbsoluteLocation( object::ParticleSpawner, )
     object.location
     end
-function AbsoluteLocation!( object::ParticleSpawner, location::AbsoluteLocation, )
+function absoluteLocation!( object::ParticleSpawner, location::AbsoluteLocation, )
     object.location = location
     return object
     end
@@ -734,9 +884,6 @@ function velocity( object::ParticleSpawner, )
 function velocity!( object::ParticleSpawner, newVelocity::AbsoluteLocation)
     object.velocity = RelativeLocation( newVelocity, )
     return object
-    end
-function visual( object::ParticleSpawner, )
-    object.visual
     end
 function initialise!( spawner::ParticleSpawner, )
     spawnParticle( spawner, )
@@ -759,11 +906,10 @@ function updateSpawningLoop( spawner::ParticleSpawner, )
 function spawnParticle( spawner::ParticleSpawner, )
     if ( # check if there is enough space to spaw a particle
         nothing == checkCollision(
-            StaticBox( 
-                relativeMechanicalBoundingBox( spawner.particleTemplate, ),
+            StaticObject( 
+                mechanicalShape( spawner.particleTemplate, ),
                 color( visual( spawner, ), ), 
                 AbsoluteLocation( spawner, ), 
-                RelativeLocation( 0, 0, ),
                 ),
             )
         )
@@ -775,22 +921,25 @@ function spawnParticle( spawner::ParticleSpawner, )
     end
 
 mutable struct Mover<:AbstractGameObject
-    box::Rectangle
+    shape::AbstractShape
     color::Colorant
     velocityStandardDeviation::Float64
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function Mover( box::Rectangle, color::Colorant, velocityStandardDeviation::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
-        new( box, color, velocityStandardDeviation, location, velocity, nothing, nothing, )
+    function Mover( shape::AbstractShape, color::Colorant, velocityStandardDeviation::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
+        new( shape, color, velocityStandardDeviation, location, velocity, nothing, nothing, )
         end
     end
 function visual( object::Mover, )
-    VisualBox( object.box, object.color, ) 
+    visual( object.shape, object.color, )
+    end
+function mechanicalShape( object::Mover, )
+    object.shape
     end
 function relativeMechanicalBoundingBox( object::Mover, )
-    object.box
+    object.shape
     end
 # function collide!( object1::Mover, object2::AbstractGameObject)
 #     print( "collide!( object1::Mover, object2::AbstractGameObject)" * "\n" * "\n", )
@@ -816,7 +965,7 @@ function relativeMechanicalBoundingBox( object::Mover, )
 function AbsoluteLocation( object::Mover, )
     object.location
     end
-function AbsoluteLocation!( object::Mover, location::AbsoluteLocation, )
+function absoluteLocation!( object::Mover, location::AbsoluteLocation, )
     object.location = location
     return object
     end
@@ -838,27 +987,30 @@ function update!( object::Mover, timeDelta::Float64, gameEngineObject::Game, )
     end
 
 mutable struct PlayerMover<:AbstractGameObject
-    box::Rectangle
+    shape::AbstractShape
     color::Colorant
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     acceleration::Float64
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function PlayerMover( box::Rectangle, color::Colorant, acceleration::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
-        new( box, color, location, velocity, acceleration, nothing, nothing, )
+    function PlayerMover( shape::AbstractShape, color::Colorant, acceleration::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
+        new( shape, color, location, velocity, acceleration, nothing, nothing, )
         end
     end
 function visual( object::PlayerMover, )
-    VisualBox( object.box, object.color, ) 
+    visual( object.shape, object.color, )
+    end
+function mechanicalShape( object::PlayerMover, )
+    object.shape
     end
 function relativeMechanicalBoundingBox( object::PlayerMover, )
-    object.box
+    object.shape
     end
 function AbsoluteLocation( object::PlayerMover, )
     object.location
     end
-function AbsoluteLocation!( object::PlayerMover, location::AbsoluteLocation, )
+function absoluteLocation!( object::PlayerMover, location::AbsoluteLocation, )
     object.location = location
     return object
     end
@@ -888,7 +1040,7 @@ function update!( object::PlayerMover, timeDelta::Float64, gameEngineObject::Gam
         end
     end
 function on_mouse_move!( object::PlayerMover, location::AbsoluteLocation, gameEngineObject::Game, )
-    AbsoluteLocation!( 
+    absoluteLocation!( 
         object, 
         let
             relRaw = location - AbsoluteLocation( object, )
@@ -901,12 +1053,12 @@ function on_mouse_down!( object::PlayerMover, location::AbsoluteLocation, button
     if button == GameZero.MouseButtons.MouseButton(1)
         spawn(
             ParticleSpawner(
-                VisualBox(
-                    Rectangle( RelativeLocation( 0, 0, ), 30, 30, ),
+                VisualRectangle(
+                    ShapeRectangle( RelativeLocation( 0, 0, ), 30, 30, ),
                     colorant"blue",
                     ), 
                 Mover(
-                    Rectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
+                    ShapeRectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
                     colorant"white", 
                     100,
                     ), 
@@ -921,12 +1073,12 @@ function on_mouse_down!( object::PlayerMover, location::AbsoluteLocation, button
 # initialise game
 spawn(
     ParticleSpawner(
-        VisualBox(
-            Rectangle( RelativeLocation( 0, 0, ), 30, 30, ), 
+        VisualRectangle(
+            ShapeRectangle( RelativeLocation( 0, 0, ), 30, 30, ), 
             colorant"blue",
             ), 
         Mover(
-            Rectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
+            ShapeCircle( RelativeLocation( 0, 0, ), 10, ), 
             colorant"white", 
             100,
             ), 
@@ -936,29 +1088,21 @@ spawn(
     )
 spawn(
     PlayerMover(
-        Rectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
+        ShapeCircle( RelativeLocation( 0, 0, ), 10, ), 
         colorant"green", 
         500, 
         ),
     AbsoluteLocation( 300, 200, ), 
-    )
-spawn(
-    Mover(
-        Rectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
-        colorant"white", 
-        0,
-        ),
-    AbsoluteLocation( 0, 0, ), 
     )
 # create blockers around visible area
 for x in -1:1 # "x coordinate"
     for y in -1:1 # "y coordinate"
         if !( x == y == 0 ) # spawn blockers all around the visible area except in the center (=except in the visible area)
             let
-                scale=1 # dev. should normally be 1
+                scale=1 # dev. should normally be 1. set smaller to visualize the rectangles by letting them reach into the visible area slightly.
                 spawn(
-                    StaticBox( 
-                        Rectangle( RelativeLocation( 0, 0, ), WIDTH, HEIGHT, ),
+                    StaticObject( 
+                        ShapeRectangle( RelativeLocation( 0, 0, ), WIDTH, HEIGHT, ),
                         colorant"white", 
                         ), 
                     AbsoluteLocation( 
