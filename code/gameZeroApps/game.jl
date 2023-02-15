@@ -36,7 +36,7 @@ function update( gameEngineObject::Game, tickTimeDelta::Float64, )
     global gameTime += tickTimeDelta
     global actorArray
     # diagnostics
-    print( "current number of actors: $(length( actorArray ) )\n" )
+    print( "\n\ncurrent number of actors: $(length( actorArray ) )\n\n" )
     # set all actors that already exist at the beginning of the engine tick to not be new in the current tick
     spawnedInCurrentTick!.( actorArray, false, )
     # update all (non-new) actors
@@ -183,6 +183,13 @@ function absoluteLocation!( object::Any, relativeLocation::RelativeLocation, ) #
         )
     return object
     end
+function distance( location1::AbsoluteLocation, location2::AbsoluteLocation, )
+    sqrt( 
+        ((x( location1, ) - x( location2, ))^2) +
+            ((y( location1, ) - y( location2, ))^2)
+        )
+    end
+    
 function RelativeLocation( object::Any, ) # query location of an object relative to the objects origin ( = location of the containing object)
     error("No method for RelativeLocation!() was found for type $(typeof(object)). Either the object doesn't have the notion of location, the object is immutable, or it uses absolute positioning or the method implementation was forgotten. To be able to interact with the location of an object it must implement both RelativeLocation(object) and relativeLocation!(object,::AbsoluteLocation), but not relativeLocation(object,::RelativeLocation), as that is inherited.")
     end
@@ -197,36 +204,40 @@ function relativeLocation!( object::Any, relativeLocation::RelativeLocation, ) #
     return object
     end
 
-abstract type AbstractShape
+abstract type Shape
     end
-function RelativeLocation( object::AbstractShape, )
-    error("No method RelativeLocation(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+function RelativeLocation( object::Shape, )
+    error("No method RelativeLocation(::$(typeof(object))) found. Subtypes of Shape need to have such a method.")
     end
-function leftBound( object::AbstractShape, )
-    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+function relativeLeftBound( object::Shape, )
+    error("No method relativeLeftBound(::$(typeof(object))) found. Subtypes of Shape need to have such a method.")
     end
-function rightBound( object::AbstractShape, )
-    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+function relativeRightBound( object::Shape, )
+    error("No method relativeRightBound(::$(typeof(object))) found. Subtypes of Shape need to have such a method.")
     end
-function upperBound( object::AbstractShape, )
-    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+function relativeUpperBound( object::Shape, )
+    error("No method relativeUpperBound(::$(typeof(object))) found. Subtypes of Shape need to have such a method.")
     end
-function lowerBound( object::AbstractShape, )
-    error("No method leftBound(::$(typeof(object))) found. Subtypes of AbstractShape need to have such a method.")
+function relativeLowerBound( object::Shape, )
+    error("No method relativeLowerBound(::$(typeof(object))) found. Subtypes of Shape need to have such a method.")
     end
 
-struct ShapeRectangle<:AbstractShape
-    relativeLocationOfUpperLeftCorner::RelativeLocation
+struct ShapeRectangle<:Shape
     sizeX::Float64
     sizeY::Float64
-    function ShapeRectangle( centerpointLocation::RelativeLocation, sizeX::Real, sizeY::Real, ) # the parameterisation of size might change in the future. see comments in its acessor functions.
+    relativeLocationOfUpperLeftCorner::RelativeLocation
+    function ShapeRectangle( 
+            sizeX::Real,  # the parameterisation of size might change in the future. see comments in its acessor functions.
+            sizeY::Real,  # the parameterisation of size might change in the future. see comments in its acessor functions.
+            centerpointLocation::RelativeLocation = RelativeLocation( 0, 0, ), 
+            )
         new( 
+            sizeX, 
+            sizeY, 
             RelativeLocation( 
                 x( centerpointLocation, ) - .5sizeX, 
                 y( centerpointLocation, ) - .5sizeY, 
                 ), 
-            sizeX, 
-            sizeY, 
             )
         end
     end
@@ -242,30 +253,28 @@ function sizeY( rectangle::ShapeRectangle, ) # this function will probably be re
 function RelativeLocation( rectangle::ShapeRectangle, )
     rectangle.relativeLocationOfUpperLeftCorner + RelativeLocation( .5sizeX( rectangle, ), .5sizeY( rectangle, ), ) # compute centerpoint coordinates
     end
-function leftBound( rectangle::ShapeRectangle, )
+function relativeLeftBound( rectangle::ShapeRectangle, )
     x( rectangle.relativeLocationOfUpperLeftCorner, ) # using low level access for performance
     end
-function rightBound( rectangle::ShapeRectangle, )
+function relativeRightBound( rectangle::ShapeRectangle, )
     x( rectangle.relativeLocationOfUpperLeftCorner, ) + sizeX( rectangle, ) # using low level access for performance
     end
-function upperBound( rectangle::ShapeRectangle, )
+function relativeUpperBound( rectangle::ShapeRectangle, )
     y( rectangle.relativeLocationOfUpperLeftCorner, ) # using low level access for performance
     end
-function lowerBound( rectangle::ShapeRectangle, )
+function relativeLowerBound( rectangle::ShapeRectangle, )
     y( rectangle.relativeLocationOfUpperLeftCorner, ) + sizeY( rectangle, ) # using low level access for performance
     end
-# function Rect( rectangle::ShapeRectangle, )
-#     Rect( 
-#         leftBound( rectangle, ), 
-#         upperBound( rectangle, ), 
-#         sizeX( rectangle, ), 
-#         sizeY( rectangle, ), 
-#         )
-#     end
 
-struct ShapeCircle<:AbstractShape
-    centerpointLocation::RelativeLocation
+struct ShapeCircle<:Shape
     radius::Float64
+    centerpointLocation::RelativeLocation
+    function ShapeCircle(
+            radius::Real,
+            centerpointLocation::RelativeLocation = RelativeLocation( 0, 0, ),  
+            )
+        new( radius, centerpointLocation, )
+        end
     end
 function radius( object::ShapeCircle, )
     object.radius
@@ -273,25 +282,18 @@ function radius( object::ShapeCircle, )
 function RelativeLocation( object::ShapeCircle, )
     object.centerpointLocation
     end
-function leftBound( object::ShapeCircle, )
+function relativeLeftBound( object::ShapeCircle, )
     x( RelativeLocation( object, ), ) - radius( object, )
     end
-function rightBound( object::ShapeCircle, )
+function relativeRightBound( object::ShapeCircle, )
     x( RelativeLocation( object, ), ) + radius( object, )
     end
-function upperBound( object::ShapeCircle, )
+function relativeUpperBound( object::ShapeCircle, )
     y( RelativeLocation( object, ), ) - radius( object, )
     end
-function lowerBound( object::ShapeCircle, )
+function relativeLowerBound( object::ShapeCircle, )
     y( RelativeLocation( object, ), ) + radius( object, )
     end
-# function Circle( object::ShapeCircle, )
-#     Circle( 
-#         x( RelativeLocation( object, ), ), 
-#         y( RelativeLocation( object, ), ), 
-#         radius( object, ), 
-#         )
-#     end
 
 # note: for some reason when i deactivate this code block i get an error message that the constructor for Rect is missing.
 function RelativeLocation( rect::Rect, ) # see note above code block
@@ -313,147 +315,115 @@ function relativeLocation!( circle::Circle, location::AbsoluteLocation, ) # see 
     return circle
     end
 
-struct LocalizedShape{shapeType<:AbstractShape} # used for collision checking.
+struct LocalizedShape{ shapeType<:Shape, } # used for collision checking.
     shape::shapeType
-    location::AbsoluteLocation
+    absoluteLocation::AbsoluteLocation
 end
-function shape( object::LocalizedShape, )
+function Shape( object::LocalizedShape, )
     object.shape
     end
-function location( object::LocalizedShape, )
-    object.location
+function AbsoluteLocation( object::LocalizedShape, )
+    object.absoluteLocation
     end
 
-abstract type AbstractVisual
+abstract type Visual
     end
-function RelativeLocation( object::AbstractVisual, )
-    error("No method for RelativeLocation(::$(typeof(object)))) was found. Subtypes of AbstractVisual need to have such a method.")
+function RelativeLocation( object::Visual, )
+    error("No method for RelativeLocation(::$(typeof(object)))) was found. Subtypes of Visual need to have such a method.")
     end
-# function relativeLocation!( object::AbstractVisual, location::AbsoluteLocation, )
-#     error("No method for relativeLocation!(::$(typeof(object))),::AbsoluteLOcation) was found. Subtypes of AbstractVisual need to have such a method.")
-#     end
-# function drawToCanvas( visual::AbstractVisual, )
-#     error("No method for drawToCanvas( visual::$(typeof(object))), ) was found. Subtypes of AbstractVisual need to have such a method.")
-#     end
-function drawToCanvas( visual::AbstractVisual, location::AbsoluteLocation, )
-    error("No method for drawToCanvas( ::$(typeof(object)), ::AbstractLocation, ) was found. Subtypes of AbstractVisual need to have such a method.")
+function drawToCanvas( visual::Visual, location::AbsoluteLocation, )
+    error("No method for drawToCanvas( ::$(typeof(visual)), ::Location, ) was found. Subtypes of Visual need to have such a method.")
     end
-function visual( shape::AbstractShape, color::Colorant, )
-    error("No method visual( shape::$(typeof(object)), color::Colorant, ) was found. Subtypes of AbstractVisual need to have such a method.")
+function Visual( shape::Shape, color::Colorant, )
+    error("No method Visual( shape::$(typeof(shape)), color::Colorant, ) was found. Subtypes of Visual need to have such a method.")
     end
 
-struct VisualRectangle<:AbstractVisual
+struct VisualRectangle<:Visual
     shape::ShapeRectangle
     color::Colorant
     end
-function RelativeLocation( object::VisualRectangle, )
-    RelativeLocation( object.shape, )
-    end
-function shape( object::VisualRectangle, )
+function Shape( object::VisualRectangle, )
     object.shape
-    end
-# function relativeLocation!( object::VisualRectangle, location::AbsoluteLocation, )
-#     relativeLocation!( 
-#         object.shape, 
-#         location, 
-#         )
-#     return object
-#     end
-# function drawToCanvas( visual::VisualRectangle, )
-#     drawToCanvas( 
-#         visual.shape, 
-#         visual.color, 
-#         ) 
-#     end
-function drawToCanvas( visual::VisualRectangle, location::AbsoluteLocation, )
-    draw( # uses the GameZero engines internal draw method.
-        Rect( 
-            convert( Int, round( leftBound( shape( visual, ), ) + x( location, ), ), ), 
-            convert( Int, round( upperBound( shape( visual, ), ) + y( location, ), ), ), 
-            convert( Int, round( sizeX( shape( visual, ), ), ), ), 
-            convert( Int, round( sizeY( shape( visual, ), ), ), ), 
-            ), 
-        visual.color, 
-        ) 
     end
 function color( visual::VisualRectangle, )
     visual.color
     end
-function visual( shape::ShapeRectangle, color::Colorant, )
+function RelativeLocation( object::VisualRectangle, )
+    RelativeLocation( Shape( object, ), )
+    end
+function drawToCanvas( visual::VisualRectangle, location::AbsoluteLocation, )
+    draw( # uses the GameZero engines internal draw method.
+        Rect( # uses the GameZero engines internal Rect type 
+            convert( Int, round( relativeLeftBound( Shape( visual, ), ) + x( location, ), ), ), 
+            convert( Int, round( relativeUpperBound( Shape( visual, ), ) + y( location, ), ), ), 
+            convert( Int, round( sizeX( Shape( visual, ), ), ), ), 
+            convert( Int, round( sizeY( Shape( visual, ), ), ), ), 
+            ), 
+        color( visual, ), 
+        ) 
+    end
+function Visual( shape::ShapeRectangle, color::Colorant, )
     VisualRectangle( shape, color, )
     end
 
-struct VisualCircle<:AbstractVisual
+struct VisualCircle<:Visual
     shape::ShapeCircle
     color::Colorant
     end
-function RelativeLocation( object::VisualCircle, )
-    RelativeLocation( object.shape, )
-    end
-function shape( object::VisualCircle, )
+function Shape( object::VisualCircle, )
     object.shape
-    end
-# function relativeLocation!( object::VisualCircle, location::AbsoluteLocation, )
-#     relativeLocation!( 
-#         object.shape, 
-#         location, 
-#         )
-#     return object
-#     end
-# function drawToCanvas( visual::VisualCircle, )
-#     drawToCanvas( 
-#         visual.shape, 
-#         visual.color, 
-#         ) 
-#     end
-function drawToCanvas( visual::VisualCircle, drawingLocation::AbsoluteLocation, )
-    draw( # uses the GameZero engines internal draw method.
-        Circle( 
-            convert( Int, round( x( RelativeLocation( visual, ), ) + x( drawingLocation, ), ), ), 
-            convert( Int, round( y( RelativeLocation( visual, ), ) + y( drawingLocation, ), ), ), 
-            radius( shape( visual, ), ), 
-            ), 
-        visual.color, 
-        ) 
     end
 function color( visual::VisualCircle, )
     visual.color
     end
-function visual( shape::ShapeCircle, color::Colorant, )
+function RelativeLocation( object::VisualCircle, )
+    RelativeLocation( Shape( object, ), )
+    end
+function drawToCanvas( visual::VisualCircle, drawingLocation::AbsoluteLocation, )
+    draw( # uses the GameZero engines internal draw method.
+        Circle( # uses the GameZero engines internal Circle type.
+            convert( Int, round( x( RelativeLocation( visual, ), ) + x( drawingLocation, ), ), ), 
+            convert( Int, round( y( RelativeLocation( visual, ), ) + y( drawingLocation, ), ), ), 
+            radius( Shape( visual, ), ), 
+            ), 
+        color( visual, ), 
+        ) 
+    end
+function Visual( shape::ShapeCircle, color::Colorant, )
     VisualCircle( shape, color, )
     end
 
-abstract type AbstractGameObject
+abstract type GameObject
     end 
 function spawnedInCurrentTick( # engine internal function, used to keep track of all actors.
-        object::AbstractGameObject,
+        object::GameObject,
         )
     object.spawnedInCurrentTick
     end
 function spawnedInCurrentTick!( # engine internal function, used to keep track of all actors.
-        object::AbstractGameObject,
+        object::GameObject,
         status::Bool, 
         )
     object.spawnedInCurrentTick = status
     end
 function currentActorArrayIndex( # engine internal function, used to keep track of all actors.
-        object::AbstractGameObject,
+        object::GameObject,
         )
     object.currentActorArrayIndex
     end
 function currentActorArrayIndex!( # engine internal function, used to keep track of all actors.
-        object::AbstractGameObject,
+        object::GameObject,
         arrayIndex::Int, 
         )
     object.currentActorArrayIndex = arrayIndex
     end
 function spawn( 
-        object::AbstractGameObject, # an instance of some type acting as a template to spawn a copy of in the gameEngineObject world
+        object::GameObject, # an instance of some type acting as a template to spawn a copy of in the gameEngineObject world
         )
     error("Attempt to spawn an object without specifying a location.")
 end
 function spawn( 
-        objectTemplate::AbstractGameObject, # an instance of some type acting as a template to spawn a copy of in the gameEngineObject world
+        objectTemplate::GameObject, # an instance of some type acting as a template to spawn a copy of in the gameEngineObject world
         location::AbsoluteLocation, # where to spawn the object
         )
     global actorArray
@@ -468,16 +438,16 @@ function spawn(
     initialiseVelocity!( spawnedObject, AbsoluteLocation( 0, 0, ), ) # at some point i'll probably have to implement spawning moving objects (e.g. because they get spawned by a moving object)
     initialise!( spawnedObject, )
     end
-function initialiseVelocity!( object::AbstractGameObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
+function initialiseVelocity!( object::GameObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
     velocity!( object, velocity, )
     end
-function remove( object::AbstractGameObject, )
+function remove( object::GameObject, )
     global actorArray
     actorArray[ currentActorArrayIndex( object, ), ] = nothing
     end
-function initialise!( object::AbstractGameObject, ) # is called upon spawning
+function initialise!( object::GameObject, ) # is called upon spawning
     end
-function update!( object::AbstractGameObject, timeDelta::Float64, gameEngineObject::Game, ) # is called at every engine tick
+function update!( object::GameObject, timeDelta::Float64, gameEngineObject::Game, ) # is called at every engine tick
     doPhysics!(
         # it might be better to move that outside of update!().
         #   reasons for outside:
@@ -496,12 +466,12 @@ function update!( object::AbstractGameObject, timeDelta::Float64, gameEngineObje
         timeDelta, 
         )
     end
-function doPhysics!( object::AbstractGameObject, timeDelta::Float64, ) # run standard physics calculations for an object (called each engine tick for all objects that use physics)
+function doPhysics!( object::GameObject, timeDelta::Float64, ) # run standard physics calculations for an object (called each engine tick for all objects that use physics)
     # print("doPhysics!-printStatement1" * "\n")
     moveByInertiaAndCollide!( object, timeDelta, )
     # ... here i could add functions such as applyDrag(). whatever the standard physics are, in a very abstract form.
     end
-function moveByInertiaAndCollide!( object::AbstractGameObject, timeDelta::Float64, ) # move the object and check for collisions resulting from this move.
+function moveByInertiaAndCollide!( object::GameObject, timeDelta::Float64, ) # move the object and check for collisions resulting from this move.
     #   note that there can be only 1 collision initiated by a given object per engine tick, because this is necessary if the engine is to remain simple:
     #       by calculating only one collision per tick (and putting the object back to its initial location in case of a collision) it is guaranteed that there are no collision chain reactions between multiple objects within a single engine tick.
     #           if one would calculate several collisions one collision might alter the path of the object such that further collisions would occur
@@ -532,7 +502,7 @@ function moveByInertiaAndCollide!( object::AbstractGameObject, timeDelta::Float6
             )
     # print( "returned colliding object is $collidingObject." * "\n", )
     # print("moveByInertiaAndCollide!-printStatement3" * "\n")
-    if( collidingObject != nothing )
+    if( collidingObject !== nothing )
         # print("moveByInertiaAndCollide!-printStatement4" * "\n")
         absoluteLocation!( # move object back to its previous (non-colliding) position 
             object, 
@@ -547,20 +517,26 @@ function moveByInertiaAndCollide!( object::AbstractGameObject, timeDelta::Float6
         end
     # print("moveByInertiaAndCollide!-printStatement7" * "\n")
     end
-function checkCollision( object1::AbstractGameObject, ) # returns a reference to all objects colliding with the one being checked
+function LocalizedShape( object::GameObject, )
+    LocalizedShape( 
+        mechanicalShape( object, ), 
+        AbsoluteLocation( object, ), 
+        )
+    end
+function checkCollision( object1::GameObject, ) # returns a reference to all objects colliding with the one being checked
     # note: technically i might have a design decision that i only do one collision per tick, so it might be possible to change this function to only return one collision.
     #   i didnt do that because i suspected that returning all collisions doesnt reduce performance much, and might be useful for dev purposes.
     # this function can be heavily performance optimized by dividing space into a hierarchy of blocks (e.g. by binary space partition) and testing for collision along the hierarchy.
 
     # print("checkingCollision" * "\n") # dev
     # print("type of colliding object is $(typeof( object1, ))." * "\n")
-    # print("type of mechanical bounding box of colliding object is $(typeof(relativeMechanicalBoundingBox( object1, )))." * "\n")
+    # print("type of mechanical bounding box of colliding object is $(typeof(mechanicalShape( object1, )))." * "\n")
 
-    if ( typeof( relativeMechanicalBoundingBox( object1, ), ) != Nothing )
+    if ( typeof( mechanicalShape( object1, ), ) != Nothing )
 
         # # code to return all coliders
         # colliders=
-        #     AbstractGameObject[] # create an empty array to collect references to colliding objects in
+        #     GameObject[] # create an empty array to collect references to colliding objects in
         # for currentObject2 in actorArray
         #     if( checkBoundingBoxIntersection( object1, currentObject2, ) )
         #         push!( colliders, currentObject2, )
@@ -571,12 +547,12 @@ function checkCollision( object1::AbstractGameObject, ) # returns a reference to
         # code to return only the first found collider
         for currentObject2 in actorArray
             if !( currentObject2 === nothing ) # dont do anything if thte object has been removed (e.g. as a result of a collision)
-                if ( relativeMechanicalBoundingBox( currentObject2, ) != nothing ) # dont do collision checking if the object has no collision.
+                if ( mechanicalShape( currentObject2, ) !== nothing ) # dont do collision checking if the object has no collision.
                     if ( !( object1 === currentObject2 ) ) # prevent objects form colliding with themselfes
-                        # print( "checking ocllision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
+                        # print( "\n" * "checking collision between $(typeof( object1, )) and $(typeof(currentObject2))." * "\n", )
                         # print("type of collided object is $(typeof( currentObject2, ))." * "\n")
-                        # print("type of mechanical bounding box of collided object is $(typeof(relativeMechanicalBoundingBox( currentObject2, )))." * "\n")
-                        if ( checkCollision( object1, currentObject2, ) )
+                        # print("type of mechanical bounding box of collided object is $(typeof(mechanicalShape( currentObject2, )))." * "\n")
+                        if checkCollision( object1, currentObject2, )
                             # print( 
                             #     "colision detected between:" * "\n" * 
                             #     "$(typeof(object1))" * "\n" * 
@@ -594,65 +570,134 @@ function checkCollision( object1::AbstractGameObject, ) # returns a reference to
             end
         end
     end
-function checkCollision( # checks whether the bounding boxes of two objects intersect 
-        object1::AbstractGameObject, 
-        object2::AbstractGameObject, 
+function checkCollision( localizedShape::LocalizedShape, ) # returns a reference to all objects colliding with the localizedShape being checked
+    # note: for comments and print statements see checkCollision( object1::GameObject, )
+    for currentObject in actorArray
+        if !( currentObject === nothing ) # dont do anything if the object has been removed (e.g. as a result of a collision)
+            if ( mechanicalShape( currentObject, ) !== nothing ) # dont do collision checking if the object has no collision.
+                if checkCollision( localizedShape, currentObject, )
+                    return currentObject
+                    end
+                end
+            end
+        end
+    end
+function checkCollision( # checks whether two objects intersect 
+        object1::GameObject, 
+        object2::GameObject, 
         )
     checkCollision(
-        LocalizedShape( mechanicalShape( object1, ), location( object1, ), ), 
-        LocalizedShape( mechanicalShape( object2, ), location( object2, ), ), 
-    )
+        LocalizedShape( object1, ), 
+        LocalizedShape( object2, ), 
+        )
     end
-function checkCollision( # checks whether the bounding boxes of two objects intersect 
-        shape1::LocalizedShape, 
-        shape2::LocalizedShape, 
+function checkCollision( # checks whether two objects intersect 
+        object::GameObject, 
+        localizedShape::LocalizedShape, 
         )
-    error("No method found to check collision between a LocalizedShape of type $(typeof(shape1)) and a LocalizedShape of type $(typeof(shape2)).")
-end
-function checkCollision( # checks whether the bounding boxes of two objects intersect 
-        shape1::LocalizedShape{coordinateAlignedBoundingBox}, 
-        shape2::LocalizedShape{coordinateAlignedBoundingBox}, 
+    checkCollision(
+        LocalizedShape( object, ), 
+        localizedShape, 
         )
-    # print( "checking bounding box intersection. Bounding boxes are: $(absoluteMechanicalBoundingBox(object1)) and $(absoluteMechanicalBoundingBox(object2))" * "\n", )
-    checkBoundingBoxIntersection1d( shape1, shape2, 1, ) & checkBoundingBoxIntersection1d( shape1, shape2, 2, )
+    end
+function checkCollision( # checks whether two objects intersect 
+        localizedShape::LocalizedShape, 
+        object::GameObject, 
+        )
+    checkCollision(
+        LocalizedShape( object, ), 
+        localizedShape, 
+        )
+    end
+function checkCollision(
+        localizedShape1::LocalizedShape{ <:Shape, }, 
+        localizedShape2::LocalizedShape{ <:Shape, }, 
+        )
+    error("No method found to check collision between a LocalizedShape of type $(typeof(localizedShape1)) and a LocalizedShape of type $(typeof(localizedShape2)).")
 end
+function checkCollision(
+        localizedShape1::LocalizedShape{ ShapeCircle, }, 
+        localizedShape2::LocalizedShape{ ShapeCircle, }, 
+        )
+        distance( 
+        AbsoluteLocation( localizedShape1, ) + RelativeLocation( Shape( localizedShape1, ), ), 
+        AbsoluteLocation( localizedShape2, ) + RelativeLocation( Shape( localizedShape2, ), ), 
+        ) < ( 
+            radius( Shape( localizedShape1, ), ) + radius( Shape( localizedShape2, ), ) 
+            )
+end
+function checkCollision(
+        circle::LocalizedShape{ ShapeCircle, }, 
+        rectangle::LocalizedShape{ ShapeRectangle, }, 
+        )
+    circleCenter = 
+        AbsoluteLocation( circle, ) + RelativeLocation( Shape( circle, ), )
+    closestPointInRectangle = 
+        AbsoluteLocation(
+            min(
+                max( 
+                    x( circleCenter, ),
+                    relativeLeftBound( Shape( rectangle, ), ) + x( AbsoluteLocation( rectangle, ), ),
+                    ), 
+                relativeRightBound( Shape( rectangle, ), ) + x( AbsoluteLocation( rectangle, ), ),
+                ),
+            min(
+                max( 
+                    y( circleCenter, ),
+                    relativeUpperBound( Shape( rectangle, ), ) + y( AbsoluteLocation( rectangle, ), ),
+                    ), 
+                relativeLowerBound( Shape( rectangle, ), ) + y( AbsoluteLocation( rectangle, ), ),
+                ),
+        )
+    distance( circleCenter, closestPointInRectangle, ) < radius( Shape( circle, ), )
+    end
+function checkCollision( # just a wrapper to switch around the arguments
+        localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+        localizedShape2::LocalizedShape{ ShapeCircle, }, 
+        )
+    checkCollision( localizedShape2, localizedShape1, )
+    end
+function checkCollision(
+        localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+        localizedShape2::LocalizedShape{ ShapeRectangle, }, 
+        )
+    # print( "checking bounding box intersection. Bounding boxes are: $(LocalizedShape(object1)) and $(LocalizedShape(object2))" * "\n", )
+    checkBoundingBoxIntersection1d( localizedShape1, localizedShape2, 1, ) & checkBoundingBoxIntersection1d( localizedShape1, localizedShape2, 2, )
+    end
 function checkBoundingBoxIntersection1d( # component of checkBoundingBoxIntersection()
-            object1::AbstractGameObject, 
-            object2::AbstractGameObject, 
+            localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+            localizedShape2::LocalizedShape{ ShapeRectangle, }, 
             dimension::Int, # which dimension to check (can be either 1 or 2)
             )
-        checkBoundingBoxIntersection1dOneSided( object1, object2, dimension, ) & checkBoundingBoxIntersection1dOneSided( object2, object1, dimension, )
+        checkBoundingBoxIntersection1dOneSided( localizedShape1, localizedShape2, dimension, ) & checkBoundingBoxIntersection1dOneSided( localizedShape2, localizedShape1, dimension, )
     end
 function checkBoundingBoxIntersection1dOneSided( # component of checkBoundingBoxIntersection1d()
-            object1::AbstractGameObject, 
-            object2::AbstractGameObject, 
+            localizedShape1::LocalizedShape{ ShapeRectangle, }, 
+            localizedShape2::LocalizedShape{ ShapeRectangle, }, 
             dimension::Int, 
             )
         # print( "checking dimension $dimension." * "\n", )
         if( dimension == 1 )
             # print( 
-            #     "absoluteMechanicalBoundingBox( object1, ).x = $(absoluteMechanicalBoundingBox( object1, ).x)" * "\n" *
-            #     "<= ( absoluteMechanicalBoundingBox( object2, ).x = $( absoluteMechanicalBoundingBox( object2, ).x)" * "\n" *
-            #     " + .5absoluteMechanicalBoundingBox( object2, ).w = $( absoluteMechanicalBoundingBox( object2, ).w). )" * "\n", 
+            #     "LocalizedShape( object1, ).x = $(LocalizedShape( object1, ).x)" * "\n" *
+            #     "<= ( LocalizedShape( object2, ).x = $( LocalizedShape( object2, ).x)" * "\n" *
+            #     " + .5absoluteMechanicalBoundingBox( object2, ).w = $( LocalizedShape( object2, ).w). )" * "\n", 
             #     )
-            # absoluteMechanicalBoundingBox( object1, ).x < ( absoluteMechanicalBoundingBox( object2, ).x + absoluteMechanicalBoundingBox( object2, ).w ) # reference: original working but slow code
-            # ( AbsoluteLocation( object1, ).x + relativeMechanicalBoundingBox( object1, ).x ) < ( ( AbsoluteLocation( object2, ).x + relativeMechanicalBoundingBox( object2, ).x ) + relativeMechanicalBoundingBox( object2, ).w ) # working fast code from before refactoring
-            ( x( AbsoluteLocation( object1, ), ) + leftBound( relativeMechanicalBoundingBox( object1, ), ) ) < ( x( AbsoluteLocation( object2, ), ) + rightBound( relativeMechanicalBoundingBox( object2, ), ) ) # working fast code
+            # LocalizedShape( object1, ).x < ( LocalizedShape( object2, ).x + LocalizedShape( object2, ).w ) # reference: original working but slow code
+            # ( AbsoluteLocation( object1, ).x + mechanicalShape( object1, ).x ) < ( ( AbsoluteLocation( object2, ).x + mechanicalShape( object2, ).x ) + mechanicalShape( object2, ).w ) # working fast code from before refactoring
+            ( x( AbsoluteLocation( localizedShape1, ), ) + relativeLeftBound( Shape( localizedShape1, ), ) ) < ( x( AbsoluteLocation( localizedShape2, ), ) + relativeRightBound( Shape( localizedShape2, ), ) ) # working fast code
         else
             # print( 
-            #     "absoluteMechanicalBoundingBox( object1, ).y = $(absoluteMechanicalBoundingBox( object1, ).y)" * "\n" *
-            #     "<= ( absoluteMechanicalBoundingBox( object2, ).y = $( absoluteMechanicalBoundingBox( object2, ).y)" * "\n" *
-            #     " + .5absoluteMechanicalBoundingBox( object2, ).h = $( absoluteMechanicalBoundingBox( object2, ).h). )" * "\n", 
+            #     "LocalizedShape( object1, ).y = $(LocalizedShape( object1, ).y)" * "\n" *
+            #     "<= ( LocalizedShape( object2, ).y = $( LocalizedShape( object2, ).y)" * "\n" *
+            #     " + .5absoluteMechanicalBoundingBox( object2, ).h = $( LocalizedShape( object2, ).h). )" * "\n", 
             #     )
-            # absoluteMechanicalBoundingBox( object1, ).y < ( absoluteMechanicalBoundingBox( object2, ).y + absoluteMechanicalBoundingBox( object2, ).h ) # reference: original working but slow code
-            # ( AbsoluteLocation( object1, ).y + relativeMechanicalBoundingBox( object1, ).y ) < ( ( AbsoluteLocation( object2, ).y + relativeMechanicalBoundingBox( object2, ).y ) + relativeMechanicalBoundingBox( object2, ).h ) # working fast code fro mbefore refactoring
-            ( y( AbsoluteLocation( object1, ), ) + upperBound( relativeMechanicalBoundingBox( object1, ), ) ) < ( y( AbsoluteLocation( object2, ), ) + lowerBound( relativeMechanicalBoundingBox( object2, ), ) ) # working fast code
+            # LocalizedShape( object1, ).y < ( LocalizedShape( object2, ).y + LocalizedShape( object2, ).h ) # reference: original working but slow code
+            # ( AbsoluteLocation( object1, ).y + mechanicalShape( object1, ).y ) < ( ( AbsoluteLocation( object2, ).y + mechanicalShape( object2, ).y ) + mechanicalShape( object2, ).h ) # working fast code fro mbefore refactoring
+            ( y( AbsoluteLocation( localizedShape1, ), ) + relativeUpperBound( Shape( localizedShape1, ), ) ) < ( y( AbsoluteLocation( localizedShape2, ), ) + relativeLowerBound( Shape( localizedShape2, ), ) ) # working fast code
             end
     end
-# to do:
-#   think if/where to check for non-moving objects (to save physics processing)
-#       e.g. in doPhysics!()
-function collide!( object1::AbstractGameObject, object2::AbstractGameObject, )
+function collide!( object1::GameObject, object2::GameObject, )
     # this function works as follows:
     #   1. does some computations for which info about both objects is required
     #   2. calls collide! on each objcet so it can do stuff internally for which it doesn't need info about the other object
@@ -682,7 +727,7 @@ function collide!( object1::AbstractGameObject, object2::AbstractGameObject, )
     #       rotation
     #       calculating the touching point and applying forces there rather then on the mass-center of the object
     # ... update velocities according to the collision
-    print( "collide!( object1::AbstractGameObject, object2::AbstractGameObject, )" * "\n" * "\n", )
+    print( "collide!( object1::GameObject, object2::GameObject, )" * "\n" * "\n", )
     # commonVelocity = velocity( object1, ) + velocity( object2, )
     differenceVelocity = velocity( object1, ) - velocity( object2, )
     # print("velocity1 = $(velocity(object1))\n")
@@ -691,80 +736,56 @@ function collide!( object1::AbstractGameObject, object2::AbstractGameObject, )
     # print("differenceVelocity = $differenceVelocity\n")
     collide!( object1, )
     collide!( object2, )
-    if ( object1 != nothing )
+    if ( object1 !== nothing )
         velocity!( 
             object1, 
             -.7differenceVelocity
             )
         end
-    if ( object2 != nothing )
+    if ( object2 !== nothing )
         velocity!( 
             object2, 
             .7differenceVelocity
             )
         end
     end
-function collide!( object::AbstractGameObject, ) # this function allows objects to do something internally on collision. (see other collide method for more info)
+function collide!( object::GameObject, ) # this function allows objects to do something internally on collision. (see other collide method for more info)
     end
-function on_key_down!( object::AbstractGameObject, key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is pressed
+function on_key_down!( object::GameObject, key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is pressed
     end
-function on_key_up!( object::AbstractGameObject,  key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is released
+function on_key_up!( object::GameObject,  key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is released
     end
-function on_mouse_move!( object::AbstractGameObject, location::AbsoluteLocation, gameEngineObject::Game, )
+function on_mouse_move!( object::GameObject, location::AbsoluteLocation, gameEngineObject::Game, )
     end
-function on_mouse_down!( object::AbstractGameObject, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
+function on_mouse_down!( object::GameObject, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
     end
-function on_mouse_up!( object::AbstractGameObject, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
+function on_mouse_up!( object::GameObject, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
     end
-function drawToCanvas( object::AbstractGameObject, ) # draws a visualisation of an object to screen
+function drawToCanvas( object::GameObject, ) # draws a visualisation of an object to screen
     drawToCanvas( 
-        visual( object, ), 
+        Visual( object, ), 
         AbsoluteLocation( object, ), 
-        # relativeLocation!( # the drawToCanvas function needs absolut locations, so i'm rebasing the location of the visual to be based on the world location rather then its parent obejct.
-        #     deepcopy( visual( object, ), ),  
-        #     AbsoluteLocation( object, ) + RelativeLocation( visual( object, ), ), 
-        #     ), 
         )
     end
-function visual( object::AbstractGameObject, ) # returns an object that can be drawn by drawToCanvas()
-    error("No method for visual() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
+function Visual( object::GameObject, ) # returns an object that can be drawn by drawToCanvas()
+    error("No method for Visual() was found for type $(typeof(object)). Subtypes of GameObject need to have such a method.")
     end
-function mechanicalShape( object::AbstractGameObject, )
-    error("No method mechanicalShape( object::$(typeof(object)), ) was found. Subtypes of AbstractGameObject need to have such a method.")
+function mechanicalShape( object::GameObject, )::Union{ Nothing, ShapeRectangle, }
+    error("No method mechanicalShape( object::$(typeof(object)), ) was found. Subtypes of GameObject need to have such a method, even if they have no mechanical shape (in that case it should just return an object of type Nothing)")
     end
-function relativeMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, ShapeRectangle, } # returns the a bounding box of an object
-    error("No method for relativeMechanicalBoundingBox() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
+function AbsoluteLocation( object::GameObject, ) # returns the location of an object
+    error("No method for AbsoluteLocation() was found for type $(typeof(object)). Subtypes of GameObject need to have such a method.")
     end
-# function absoluteMechanicalBoundingBox( object::AbstractGameObject, )::Union{ Nothing, ShapeRectangle, } # returns an absolutely placed copy of the bounding box of an object for collision checking (although it internally still uses type RelativeLocation to represent its location)
-#   # note: i might remove this function as i switched to use low level programming for functions such as draw and checkCollision, so they now internally move the coordinates to the absolute position.
-#   #     this was a design decision i made, so it's not going to change and having #  +                things that need to have an absolutely positioned rectangle such as draw() and checkBoundingBoxIntersection() should probabl best be low-level programmed, so they just take the object position and the relatively positioned rectangle as input.
-#                       -> remove absoluteMechanicalBoundingBox() ?() might now be unidiomatic.
-#     if relativeMechanicalBoundingBox( object, ) != nothing 
-#         return (
-#             relativeLocation!(
-#                 deepcopy( 
-#                     relativeMechanicalBoundingBox( object, ), 
-#                     ), 
-#                 AbsoluteLocation( object, ) + RelativeLocation( relativeMechanicalBoundingBox( object, ), ), 
-#                 )
-#             )
-#     else
-#         return nothing
-#         end
-#     end
-function AbsoluteLocation( object::AbstractGameObject, ) # returns the location of an object
-    error("No method for AbsoluteLocation() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
+function absoluteLocation!( object::GameObject, location::AbsoluteLocation, ) # sets the location of an object to a given location
+    error("No method for absoluteLocation!( ::GameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of GameObject need to have such a method. Note that a method absoluteLocation!( ::GameObject, ::RelativeLocation) is not required as it is inherited.")
     end
-function absoluteLocation!( object::AbstractGameObject, location::AbsoluteLocation, ) # sets the location of an object to a given location
-    error("No method for absoluteLocation!( ::AbstractGameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method. Note that a method absoluteLocation!( ::AbstractGameObject, ::RelativeLocation) is not required as it is inherited.")
+function velocity( object::GameObject, )
+    error("No method for velocity() was found for type $(typeof(object)). Subtypes of GameObject need to have such a method.")
     end
-function velocity( object::AbstractGameObject, )
-    error("No method for velocity() was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method.")
+function velocity!( object::GameObject, newVelocity::AbsoluteLocation)
+    error("No method for velocity!( ::GameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of GameObject need to have such a method. Note that a method velocity!( ::GameObject, ::RelativeLocation) is not required as it is inherited.")
     end
-function velocity!( object::AbstractGameObject, newVelocity::AbsoluteLocation)
-    error("No method for velocity!( ::AbstractGameObject, ::AbsoluteLocation) was found for type $(typeof(object)). Subtypes of AbstractGameObject need to have such a method. Note that a method velocity!( ::AbstractGameObject, ::RelativeLocation) is not required as it is inherited.")
-    end
-function velocity!( object::AbstractGameObject, impulse::RelativeLocation, ) # change velocity with an impulse according to the laws of physics
+function velocity!( object::GameObject, impulse::RelativeLocation, ) # change velocity with an impulse according to the laws of physics
     velocity!( 
         object, 
         AbsoluteLocation( velocity( object, ) + impulse, )
@@ -772,27 +793,28 @@ function velocity!( object::AbstractGameObject, impulse::RelativeLocation, ) # c
     return object
     end
 
-abstract type AbstractStaticObject<:AbstractGameObject
-    end
-
-mutable struct StaticObject<:AbstractStaticObject
-    shape::AbstractShape
+mutable struct StaticObject<:GameObject
+    shape::Shape
     color::Colorant
     location::Union{ AbsoluteLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function StaticObject( shape::AbstractShape, color::Colorant, location::Union{ AbsoluteLocation, Nothing, }=nothing, )
+    function StaticObject( 
+            shape::Shape, 
+            color::Colorant, 
+            location::Union{ AbsoluteLocation, Nothing, } = nothing, 
+            )
         new( shape, color, location, nothing, nothing, )
         end
-    end
-function visual( object::StaticObject, )
-    visual( object.shape, object.color, ) 
     end
 function mechanicalShape( object::StaticObject, )
     object.shape
     end
-function relativeMechanicalBoundingBox( object::StaticObject, )
-    object.shape
+function color( object::StaticObject, )
+    object.color
+    end
+function Visual( object::StaticObject, )
+    Visual( mechanicalShape( object, ), color( object, ), ) 
     end
 function AbsoluteLocation( object::StaticObject, )
     object.location
@@ -812,8 +834,8 @@ function velocity!( object::StaticObject, newVelocity::AbsoluteLocation, )
     end
 function initialiseVelocity!( object::StaticObject, velocity::AbsoluteLocation, ) # used by spawn(). has several methods
     end
-function collide!( object1::StaticObject, object2::AbstractGameObject, )
-        print( "collide!( object1::StaticObject, object2::AbstractGameObject, )" * "\n" * "\n", )
+function collide!( object1::StaticObject, object2::GameObject, )
+        print( "collide!( object1::StaticObject, object2::GameObject, )" * "\n" * "\n", )
         differenceVelocity = velocity( object1, ) - velocity( object2, )
         # print("velocity1 = $(velocity(object1))\n")
         # print("velocity2 = $(velocity(object2))\n")
@@ -824,28 +846,25 @@ function collide!( object1::StaticObject, object2::AbstractGameObject, )
             1.4differenceVelocity
             )
     end
-function collide!( object1::AbstractGameObject, object2::StaticObject, ) # just a wrapper to switch the arguments around
+function collide!( object1::GameObject, object2::StaticObject, ) # just a wrapper to switch the arguments around
     collide!( object2, object1, )
     end
 function collide!( object1::StaticObject, object2::StaticObject, )
     error("collision between static objects registered")
     end
 
-abstract type AbstractParticleSpawner<:AbstractGameObject
-    end
-
-mutable struct ParticleSpawner<:AbstractParticleSpawner
-    visual::AbstractVisual
+mutable struct ParticleSpawner<:GameObject
+    visual::Visual
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
-    particleTemplate::AbstractGameObject
+    particleTemplate::GameObject
     spawningRate::Float64 # number of particles per second
     timeOfNextParticleSpawn::Union{ Float64, Nothing, } # absolute gameTime when the next particle is spawned
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
     function ParticleSpawner(
-            visual::AbstractVisual, 
-            particleTemplate::AbstractGameObject, 
+            visual::Visual, 
+            particleTemplate::GameObject, 
             spawningRate::Real, 
             location::Union{ AbsoluteLocation, Nothing, }=nothing, 
             velocity::Union{ RelativeLocation, Nothing, }=nothing, 
@@ -862,15 +881,12 @@ mutable struct ParticleSpawner<:AbstractParticleSpawner
             )
         end
     end
-function visual( object::ParticleSpawner, )
-    object.visual
-    end
 function mechanicalShape( object::ParticleSpawner, )
     return nothing
     end
-function relativeMechanicalBoundingBox( object::ParticleSpawner, )
-    return nothing
-end
+function Visual( object::ParticleSpawner, )
+    object.visual
+    end
 function AbsoluteLocation( object::ParticleSpawner, )
     object.location
     end
@@ -905,10 +921,9 @@ function updateSpawningLoop( spawner::ParticleSpawner, )
     end
 function spawnParticle( spawner::ParticleSpawner, )
     if ( # check if there is enough space to spaw a particle
-        nothing == checkCollision(
-            StaticObject( 
+        nothing === checkCollision(
+            LocalizedShape( 
                 mechanicalShape( spawner.particleTemplate, ),
-                color( visual( spawner, ), ), 
                 AbsoluteLocation( spawner, ), 
                 ),
             )
@@ -920,32 +935,38 @@ function spawnParticle( spawner::ParticleSpawner, )
         end 
     end
 
-mutable struct Mover<:AbstractGameObject
-    shape::AbstractShape
+mutable struct Mover<:GameObject
+    shape::Shape
     color::Colorant
     velocityStandardDeviation::Float64
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function Mover( shape::AbstractShape, color::Colorant, velocityStandardDeviation::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
+    function Mover( 
+            shape::Shape, 
+            color::Colorant, 
+            velocityStandardDeviation::Real, 
+            location::Union{ AbsoluteLocation, Nothing, } = nothing, 
+            velocity::Union{ RelativeLocation, Nothing, } = nothing, 
+            )
         new( shape, color, velocityStandardDeviation, location, velocity, nothing, nothing, )
         end
-    end
-function visual( object::Mover, )
-    visual( object.shape, object.color, )
     end
 function mechanicalShape( object::Mover, )
     object.shape
     end
-function relativeMechanicalBoundingBox( object::Mover, )
-    object.shape
+function color( object::Mover, )
+    object.color
     end
-# function collide!( object1::Mover, object2::AbstractGameObject)
-#     print( "collide!( object1::Mover, object2::AbstractGameObject)" * "\n" * "\n", )
+function Visual( object::Mover, )
+    Visual( mechanicalShape( object, ), color( object, ), )
+    end
+# function collide!( object1::Mover, object2::GameObject)
+#     print( "collide!( object1::Mover, object2::GameObject)" * "\n" * "\n", )
 #     remove( object1, )
 #     end
-# function collide!( object1::AbstractGameObject, object2::Mover) # forwarding method that just swaps the arguments around.
+# function collide!( object1::GameObject, object2::Mover) # forwarding method that just swaps the arguments around.
 #     collide!( object2, object1, )
 #     end
 # function collide!( object1::Mover, object2::Mover)
@@ -986,26 +1007,32 @@ function update!( object::Mover, timeDelta::Float64, gameEngineObject::Game, )
         )
     end
 
-mutable struct PlayerMover<:AbstractGameObject
-    shape::AbstractShape
+mutable struct PlayerMover<:GameObject
+    shape::Shape
     color::Colorant
     location::Union{ AbsoluteLocation, Nothing, }
     velocity::Union{ RelativeLocation, Nothing, }
     acceleration::Float64
     spawnedInCurrentTick::Union{ Bool, Nothing, }
     currentActorArrayIndex::Union{ Int, Nothing, }
-    function PlayerMover( shape::AbstractShape, color::Colorant, acceleration::Real, location::Union{ AbsoluteLocation, Nothing, }=nothing, velocity::Union{ RelativeLocation, Nothing, }=nothing, )
+    function PlayerMover( 
+            shape::Shape, 
+            color::Colorant, 
+            acceleration::Real, 
+            location::Union{ AbsoluteLocation, Nothing, } = nothing, 
+            velocity::Union{ RelativeLocation, Nothing, } = nothing, 
+            )
         new( shape, color, location, velocity, acceleration, nothing, nothing, )
         end
-    end
-function visual( object::PlayerMover, )
-    visual( object.shape, object.color, )
     end
 function mechanicalShape( object::PlayerMover, )
     object.shape
     end
-function relativeMechanicalBoundingBox( object::PlayerMover, )
-    object.shape
+function color( object::PlayerMode, )
+    object.color
+    end
+function Visual( object::PlayerMover, )
+    Visual( mechanicalShape( object, ), color( object, ), )
     end
 function AbsoluteLocation( object::PlayerMover, )
     object.location
@@ -1054,11 +1081,11 @@ function on_mouse_down!( object::PlayerMover, location::AbsoluteLocation, button
         spawn(
             ParticleSpawner(
                 VisualRectangle(
-                    ShapeRectangle( RelativeLocation( 0, 0, ), 30, 30, ),
+                    ShapeRectangle( 30, 30, ),
                     colorant"blue",
                     ), 
                 Mover(
-                    ShapeRectangle( RelativeLocation( 0, 0, ), 10, 10, ), 
+                    ShapeRectangle( 10, 10, ), 
                     colorant"white", 
                     100,
                     ), 
@@ -1073,12 +1100,12 @@ function on_mouse_down!( object::PlayerMover, location::AbsoluteLocation, button
 # initialise game
 spawn(
     ParticleSpawner(
-        VisualRectangle(
-            ShapeRectangle( RelativeLocation( 0, 0, ), 30, 30, ), 
+        VisualCircle(
+            ShapeCircle( 15, ), 
             colorant"blue",
             ), 
         Mover(
-            ShapeCircle( RelativeLocation( 0, 0, ), 10, ), 
+            ShapeCircle( 10, ), 
             colorant"white", 
             100,
             ), 
@@ -1088,11 +1115,18 @@ spawn(
     )
 spawn(
     PlayerMover(
-        ShapeCircle( RelativeLocation( 0, 0, ), 10, ), 
+        ShapeCircle( 10, ), 
         colorant"green", 
         500, 
         ),
     AbsoluteLocation( 300, 200, ), 
+    )
+spawn(
+    StaticObject( 
+        ShapeRectangle( 100, 100, ),
+        colorant"white", 
+        ), 
+    AbsoluteLocation( 300, 300, ), 
     )
 # create blockers around visible area
 for x in -1:1 # "x coordinate"
@@ -1102,7 +1136,7 @@ for x in -1:1 # "x coordinate"
                 scale=1 # dev. should normally be 1. set smaller to visualize the rectangles by letting them reach into the visible area slightly.
                 spawn(
                     StaticObject( 
-                        ShapeRectangle( RelativeLocation( 0, 0, ), WIDTH, HEIGHT, ),
+                        ShapeRectangle( WIDTH, HEIGHT, ),
                         colorant"white", 
                         ), 
                     AbsoluteLocation( 
@@ -1114,6 +1148,5 @@ for x in -1:1 # "x coordinate"
             end
         end
     end
-
 
 
