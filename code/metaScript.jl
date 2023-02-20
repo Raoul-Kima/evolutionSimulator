@@ -4,7 +4,7 @@
 using Colors
 using GameZero
 
-gamePath = "C:\\Archiv\\Projekte\\Mathematik_Informatik\\Julia\\evolutionSimulator\\code\\gameZeroApps\\game1.3.1_branchWithAlternatePhysicsEngine.jl"
+gamePath = "C:\\Archiv\\Projekte\\Mathematik_Informatik\\Julia\\evolutionSimulator_git\\evolutionSimulator\\code\\gameZeroApps\\game.jl"
 
 
 
@@ -41,6 +41,7 @@ module g
                                 # cachedIntersectionTime = cachedIntersectionTimes[ abs.( cachedIntersectionTimes, ) .== minimum( abs.( cachedIntersectionTimes, ), ) ][]
 #   once everything works, do some performance optimisation.
 #   after all that i have some other physics stuff still open, e.g. the binary space partition algorithm
+
 
 
 # current:
