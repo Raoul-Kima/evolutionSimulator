@@ -130,6 +130,20 @@
 #               this of course requires that the brain can evolve "parts", that is defined regions.
 #                   this might actually also be helpful for understanding what the brain does, if it basically auto-segments itself into functional regions.
 # feature ideas
+#   i'm unsure how i can implement growth and nonparametric body evolution
+#       im sure that i want it to support evolution of abstractions
+#          im sure that i want it to be able to evolve that the neurons for an abstraction are located in that part of the body.
+#       one (very biology inspored) idea is to use "body hormones"
+#           e.g. a cell can emit a hormone, which spready only within the body, and whose concentations decreases with distance from the source cell (ther ecan be several cell producing it)
+#               the concentrations of these hormones would be inputs for the vegetative neural net, and thus control body growth
+#               advantages:
+#                   very non-parametric
+#               disadvantages:
+#               unclear:
+#                   it might be too low-level, that is: im not really interested in watching how organisms evolve a system to grow stuff (and fail at that very often), i just want them to be able to grow.
+#                       thus this might impede evolution of the parts im interested in too much
+#                   im not sure whether its compatible with abstractions
+#                   this might be a nice way to non-parametrically allow organisms to evolve body-symmetry
 #   environments incorporating different habitats in differen regions
 #   have semi-fast predictable and unpredictable environment changes
 #       e.g. a day-night cycle that makes organisms evolve cyclical strategies.
