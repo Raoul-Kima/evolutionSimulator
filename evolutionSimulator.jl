@@ -144,6 +144,10 @@
 #                       thus this might impede evolution of the parts im interested in too much
 #                   im not sure whether its compatible with abstractions
 #                   this might be a nice way to non-parametrically allow organisms to evolve body-symmetry
+#   a good (as i envision it) implementation of body evolution probably also has these properties:
+#       organisms can evolve the ability to regenerate lost body parts, but this is not hardcoded and requires actual evolutionary effort
+#           because the hardcoded mechanism is based on body building instructions rather than body plans (evolution changes these instrutions, not the plan)
+#               this is what allows organisms to evolve in a way where the boundaries between individuals and the boundaries between life and death are not clearly defined
 #   environments incorporating different habitats in differen regions
 #   have semi-fast predictable and unpredictable environment changes
 #       e.g. a day-night cycle that makes organisms evolve cyclical strategies.
