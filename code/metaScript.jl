@@ -25,6 +25,15 @@ module g
 
 
 # current:
+#   i think the key idea to repair the physics enginge might be this:
+#   i previously considered making applying impulse when objects intersect in addition to or instead of moving them away from each other
+#       i thought this is a bad idea because then when two objects collide the strength of the bounce-back would depend on the exact timing pf the physics collision (how deeply do they penetrate), and thus be essentially random
+#       but i think this randomness can be avioded by first resolving hte penetration and applying corresponding impulse, and then only after the objects velocity was updated with that impulse compute the bounceback from the velocity differences of the objects
+#           this way the bounceback calculation acts only on the remaining speed difference that is left after the penetration resolution, thereby (hopefully) "correcting" for the "randomness" of the penetration resolution impulse.
+#               maybe this is how the physics engine in that youtube video that handles >100000 balls solves the problem.
+#               question: how much impulse should the penetration correspond to?
+#                       maybe that impulse is only for one frame, and just enought to get the objects outside? (it could bounce away other objects in that one frame)
+#       applying impulse based on intersection might make sense because it might represent the forces transmitted by objects constantly pressing against each other.
 #   todo collision handling rewrite:
 #       change the intersectionTime calculation such that it calculates the time to both ends of the object, and takes the one with the smaller absolute value.
 #       i still need to find the formula for calculating the intersectionDistance for spheres, and for sphere-rectangle interactions.
