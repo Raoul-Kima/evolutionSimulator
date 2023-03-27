@@ -25,10 +25,29 @@ module g
 
 
 # current:
-#   there is parobably a bug with the hotkey and mouse input because of a package change
-#       the type of the second argument of on_key_down! used to be GameZero.Keys.Key, but that not triggers an error.
-#           i changed it to GameZero.KeyHolder and that error is gone, but i couldn't test if there are still remamning problems because the physics code first has to be fixed. (it was left in an incomplete state during a rewrite)
-#           the mouse code is probably equivalently broken.
+#   there is probably a bug with the hotkey and mouse input because of a package change
+#       the type of the second argument of on_key_down! (and on_key_up!), which is called "key", used to be of type GameZero.Keys.Key, but that now triggers an error.
+#           i changed its type annotation to GameZero.KeyHolder and added a method where it is Int32.
+#               it looks like KeyHolder might be used whenever no key is pressed, and otherwise its an Int32
+#               this solution should be fine for now, as long as im not using these events.
+#                   (the current code doesnt use these events, rather it checks the current keypress state at every engine tick)
+#                   (tested it with an earlier code version where the physics isnt in a broken state)
+#           im not sure what Int32 corresponds to which key, and the example project on the GameZero website even indicates it shouldnt be an Int32 at all.
+#               the example checks e.g. for the e-key by doing key==Keys.e
+#                   where key is the aforementioned Int whereas Keys.e returns something else (looks like it could be a string following this table: https://www.libsdl.org/release/SDL-1.2.15/docs/html/sdlkey.html)
+#                       this could be a bug, at i'm not even sure if the Int32 is always the same for the same key.
+#                           i might be able to figure it out with the info from https://www.libsdl.org/release/SDL-1.2.15/docs/html/guideinputkeyboard.html
+#                           as far as i can see, GameZero forwards the the "sym" field of an "SDL_keysym" object to the "key" argument of on_key_down!(), so i dont understand why it ends up being an Int32 rather then a string like in the table of codes in the website.
+#                               since the example game on github checks for a key by doing key==Keys.e, where Keys.e is according to the mentioned table, it seems like there should be no Int32 involved.
+#                                   in any case: what number could the int32 be? maybe the line numberin the aforementioned table, maybe the unicode-code.
+#           the mouse code is fine and unchanged.
+function on_key_down!( object::GameObject, key::Int32, gameEngineObject::Game, ) # is called when a key is pressed
+    print(key)
+    print(Keys.e)
+    print(key==Keys.e)
+    end
+    on_key_down(g, k)
+    if k == Keys.SPACE
 #   currently the code is in a broken state inside a physics rewrite (trying to solve the long-stanting physics issues i had):
 #       e.g. the function checkCollision_internal_maxRecursionDepth() is entirely just garbage now, there's just some stuff fore reference, i dont even know excatly what the function is supposed to do.
 #   i think the key idea to repair the physics enginge might be this:

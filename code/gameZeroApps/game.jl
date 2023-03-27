@@ -999,10 +999,14 @@ function collide!( object1::GameObject, object2::GameObject, )
     end
 function collide!( object::GameObject, ) # this function allows objects to do something internally on collision. (see other collide method for more info)
     end
-function on_key_down!( object::GameObject, key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is pressed
+function on_key_down!( object::GameObject, key::GameZero.KeyHolder, gameEngineObject::Game, ) # is called when a key is pressed
     end
-function on_key_up!( object::GameObject,  key::GameZero.Keys.Key, gameEngineObject::Game, ) # is called when a key is released
+function on_key_down!( object::GameObject, key::Int32, gameEngineObject::Game, ) # is called when a key is pressed
     end
+function on_key_up!( object::GameObject,  key::GameZero.KeyHolder, gameEngineObject::Game, ) # is called when a key is released
+    end
+function on_key_up!( object::GameObject,  key::Int32, gameEngineObject::Game, ) # is called when a key is released
+    end 
 function on_mouse_move!( object::GameObject, location::AbsoluteLocation, gameEngineObject::Game, )
     end
 function on_mouse_down!( object::GameObject, location::AbsoluteLocation, button::GameZero.MouseButtons.MouseButton, gameEngineObject::Game, )
