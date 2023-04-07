@@ -148,6 +148,14 @@
 #       organisms can evolve the ability to regenerate lost body parts, but this is not hardcoded and requires actual evolutionary effort
 #           because the hardcoded mechanism is based on body building instructions rather than body plans (evolution changes these instrutions, not the plan)
 #               this is what allows organisms to evolve in a way where the boundaries between individuals and the boundaries between life and death are not clearly defined
+#   if i implement nonparametric body evolution then there must be ecological properties aected by it in interesting ways.
+#       e.g. if the arrangement of cells doesn't matter organisms will evolve bodies with random cell placement.
+#           at that point i might as well just do parametric bodies.
+#           this might mean e.g. that it might be a good idea to introduce body deformation (e.g. muscle cells) sooner than i had envisioned.
+#   i could put a max force constrain on cell adhesion to simulat body ripping and cell death.
+#       forces exceeding the limit towards another cell (= forces that would lead to cell intersection) lead to cell death
+#       forces exceeding the limit away another cell lead to cell separation
+#       when using soft bodies this could evel simulate internal injuries
 #   environments incorporating different habitats in differen regions
 #   have semi-fast predictable and unpredictable environment changes
 #       e.g. a day-night cycle that makes organisms evolve cyclical strategies.
@@ -197,3 +205,6 @@
 #       oscillator
 #           settings: frequency
 #       delay/storage/accumulator
+#   topics i could explore with the simulation
+#       gravity and energy costs of "flight"
+#       burst energy output vs sustain energy output
